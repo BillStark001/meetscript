@@ -1,0 +1,9 @@
+fastapi[all]
+uvicorn
+python-jose
+peewee
+python-dotenv
+pydantic
+pytz
+torch
+openai-whisper
