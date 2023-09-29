@@ -2,13 +2,18 @@ import peewee as pw
 from datetime import datetime
 import pytz
 
-from user.model import User
 from codes import Codes
 import user.format as f
+
+from typing import Optional
 
 # database
 
 db_users = pw.SqliteDatabase('./users.db')
+def initialize_db():
+  db_users.connect()
+  db_users.create_tables([User], safe = True)
+  db_users.close()
 
 
 class User(pw.Model):
@@ -18,6 +23,7 @@ class User(pw.Model):
   pw_update = pw.DateTimeField(default=datetime.utcfromtimestamp(0))
 
   username = pw.CharField(max_length=32)
+  group=pw.CharField(max_length=64)
   
 
   class Meta:
@@ -63,16 +69,18 @@ def authenticate_user(email: str, password: str):
   try:
     user = User.get(User.email == email)
     if f.verify_password(password, user.pw_hash):
-      return Codes.DONE
+      return Codes.DONE, user
     else:
-      return Codes.ERR_WRONG_UNAME_OR_PW
+      return Codes.ERR_WRONG_UNAME_OR_PW, None
   except User.DoesNotExist:
-    return Codes.ERR_WRONG_UNAME_OR_PW
+    return Codes.ERR_WRONG_UNAME_OR_PW, None
 
 
-def get_user(email: str):
+def get_user(email: str) -> Optional[User]:
   try:
     user = User.get(User.email == email)
     return user
   except User.DoesNotExist:
     return None
+
+initialize_db()

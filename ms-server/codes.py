@@ -1,6 +1,6 @@
 class Codes:
   
-  DONE = 0, 'Operation Successful.', 200
+  DONE: int = 0, 'Operation Successful.', 200
   
   ERR_INVALID_USERNAME = 10
   ERR_INVALID_PASSWORD = 11
@@ -22,5 +22,13 @@ def _gen_desc():
     desc = c[1] if len(c) > 1 and c[1] else code_str
     status = c[2] if len(c) > 2 else 400
     
+    setattr(Codes, code_str, code_int)
+    
     res[code_int] = (code_int, desc, status)
+  return res
+    
+_descs = _gen_desc()
+
+def getDescription(code: int) -> tuple:
+  return _descs.get(code, (code, 'Unknown Status.', 200))
     
