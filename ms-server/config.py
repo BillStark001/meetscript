@@ -17,8 +17,9 @@ class AppConfig:
   
   _JWT_SECRET_KEY = os.environ.get('SECRET_KEY') or 'SECRET_KEY'
   _JWT_EXPIRE_MINUTES = _i(os.environ.get('JWT_EXPIRE_MINUTES'))
+  _JWT_REFRESH_EXPIRE_DAYS = _i(os.environ.get('JWT_REFRESH_EXPIRE_DAYS'))
   
-  _HMAC_SALT = os.environ.get('HMAC_SALT') or 'HMAC_SALT'
+  _HMAC_SALT = (os.environ.get('HMAC_SALT') or 'HMAC_SALT').encode()
   
 
   @classmethod
@@ -30,6 +31,11 @@ class AppConfig:
   @property
   def JwtExpireMinutes(cls):
     return cls._JWT_EXPIRE_MINUTES
+  
+  @classmethod
+  @property
+  def JwtRefreshExpireDays(cls):
+    return cls._JWT_REFRESH_EXPIRE_DAYS
 
   @classmethod
   @property

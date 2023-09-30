@@ -4,17 +4,17 @@ import pytz
 
 from codes import Codes
 import user.format as f
+from constants import UserGroup
 
 from typing import Optional
 
 # database
 
-db_users = pw.SqliteDatabase('./users.db')
+db_users = pw.SqliteDatabase('./users.sqlite')
 def initialize_db():
   db_users.connect()
   db_users.create_tables([User], safe = True)
   db_users.close()
-
 
 class User(pw.Model):
 
@@ -47,7 +47,7 @@ class User(pw.Model):
     return Codes.DONE
 
 
-def create_user(email: str, username: str, password: str):
+def create_user(email: str, username: str, password: str, group: str = UserGroup.user):
 
   if not f.is_valid_email(email):
     return Codes.ERR_INVALID_EMAIL
@@ -59,9 +59,15 @@ def create_user(email: str, username: str, password: str):
   pw_hash = f.encode_password(password)
 
   try:
-    User.create(email=email, username=username, pw_hash=pw_hash, pw_update=datetime.utcnow())
+    User.create(
+      email=email, 
+      username=username, 
+      pw_hash=pw_hash, 
+      pw_update=datetime.utcnow(),
+      group=group
+    )
     return Codes.DONE
-  except pw.IntegrityError:
+  except pw.IntegrityError as e:
     return Codes.ERR_EXISTENT_EMAIL
 
 

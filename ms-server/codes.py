@@ -9,6 +9,8 @@ class Codes:
   ERR_EXISTENT_EMAIL = 15
   
   ERR_WRONG_UNAME_OR_PW = 30
+  ERR_AUTH_FAILED = 50, 'Could not validate credentials', 401
+  ERR_WRONG_TOKEN_TYPE = 51, 'Wrong token type', 401
   
 def _gen_desc():
   res = {}
@@ -24,7 +26,7 @@ def _gen_desc():
     
     setattr(Codes, code_str, code_int)
     
-    res[code_int] = (code_int, desc, status)
+    res[code_int] = (code_str, desc, status)
   return res
     
 _descs = _gen_desc()

@@ -76,7 +76,7 @@ def is_valid_email(email: str):
 
 
 def encode_password(password: str):
-  return hmac.new(AppConfig.HmacSalt, password, hashlib.sha256).hexdigest()
+  return hmac.new(AppConfig.HmacSalt, password.encode(), hashlib.sha256).hexdigest()
 
 
 def verify_password(password: str, encoded: str):
