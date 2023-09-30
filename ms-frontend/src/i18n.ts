@@ -11,8 +11,6 @@ const resources = {
   zh: JSON.parse(zhJson),
 };
 
-console.log(resources);
-
 i18n.use(initReactI18next).init({
   resources,
   lng: "en",
