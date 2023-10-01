@@ -19,45 +19,48 @@ class RegisterForm(BaseModel):
   username: str
   password: str
 
+
 @app.post("/api/user/login")
 async def login(
-  response: Response,
-  form_data: OAuth2PasswordRequestForm = Depends(),
+    response: Response,
+    form_data: OAuth2PasswordRequestForm = Depends(),
 ):
   email = form_data.username
   password = form_data.password
-  code, user = await authenticate_user(email, password)  # Use your existing authentication function
+  # Use your existing authentication function
+  code, user = await authenticate_user(email, password)
 
   if code == Codes.DONE:
-    token = create_jwt_token( 
-      user, 
-      Token.Refresh, 
-      AppConfig.RefreshTokenExpires
+    token = create_jwt_token(
+        user,
+        Token.Refresh,
+        AppConfig.RefreshTokenExpires
     )
-    
+
     response.set_cookie(
-      key=Token.Refresh.value, 
-      value=token, 
-      expires=AppConfig.RefreshTokenExpires, 
-      httponly=True
+        key=Token.Refresh.value,
+        value=token,
+        expires=AppConfig.RefreshTokenExpires,
+        httponly=True
     )
     return {"detail": "Done.", Token.Refresh: token}
-  
+
   else:
     _, desc, status = getDescription(code)
     raise HTTPException(status_code=status, detail=desc)
 
+
 @app.post("/api/user/register")
 async def register(
-  form_data: RegisterForm
+    form_data: RegisterForm
 ):
   code = await create_user(form_data.email, form_data.username, form_data.password)
   if code == Codes.DONE:
     return {"detail": "Done."}
-  
+
   else:
     _, desc, status = getDescription(code)
     raise HTTPException(status_code=status, detail=desc)
-  
-  
+
+
 initialize_db()

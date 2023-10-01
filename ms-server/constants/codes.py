@@ -9,8 +9,12 @@ class Codes:
   ERR_EXISTENT_EMAIL = 15
   
   ERR_WRONG_UNAME_OR_PW = 30
-  ERR_AUTH_FAILED: int = 50, 'Could not validate credentials', 401
-  ERR_WRONG_TOKEN_TYPE: int = 51, 'Wrong token type', 401
+  ERR_AUTH_FAILED: int = 50, 'Could not validate credentials.', 401
+  ERR_WRONG_TOKEN_TYPE: int = 51, 'Wrong token type.', 401
+  
+  ERR_SESSION_DB = 80
+  ERR_MEETING_STARTED = 81, 'Meeting already started.', 400
+  ERR_MEETING_NOT_STARTED = 82, 'Meeting not started.', 400
   
 def _gen_desc():
   res = {}

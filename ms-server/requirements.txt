@@ -7,7 +7,6 @@ aiosqlite
 python-dotenv
 pydantic
 pydantic-yaml
-pytz
 torch
 openai-whisper
 dataclasses-json

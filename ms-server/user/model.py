@@ -12,14 +12,18 @@ from utils.sqlite import AsyncSqliteDatabase
 
 # database
 
-db = AsyncSqliteDatabase('./users.sqlite')
+db = AsyncSqliteDatabase(None)
 objects = pwa.Manager(db)
 
+
 def initialize_db():
-  db.connect()
-  db.create_tables([User], safe = True)
-  db.close()
+  db.init('./users.sqlite')
   db.set_allow_sync(False)
+  with db.allow_sync():
+    db.connect()
+    db.create_tables([User], safe=True)
+    db.close()
+
 
 class User(pw.Model):
 
@@ -28,8 +32,7 @@ class User(pw.Model):
   pw_update = pw.DateTimeField(default=datetime.utcfromtimestamp(0))
 
   username = pw.CharField(max_length=32)
-  group=pw.CharField(max_length=64)
-  
+  group = pw.CharField(max_length=64)
 
   class Meta:
     database = db
@@ -50,9 +53,10 @@ class User(pw.Model):
     if save:
       self.save()
     return Codes.DONE
-  
 
-guest_user = User(email='__guest__', pw_hash='', username='guest', group=UserGroup.Guest)
+
+guest_user = User(email='__guest__', pw_hash='',
+                  username='guest', group=UserGroup.Guest)
 
 
 async def create_user(email: str, username: str, password: str, group: str = UserGroup.User):
@@ -65,18 +69,18 @@ async def create_user(email: str, username: str, password: str, group: str = Use
     return Codes.ERR_INVALID_PASSWORD
 
   pw_hash = f.encode_password(password)
-  
+
   try:
     await objects.create(
-      User, 
-      email=email, 
-      username=username, 
-      pw_hash=pw_hash, 
-      pw_update=datetime.utcnow(),
-      group=group
+        User,
+        email=email,
+        username=username,
+        pw_hash=pw_hash,
+        pw_update=datetime.utcnow(),
+        group=group
     )
     return Codes.DONE
-  except pw.IntegrityError as e: 
+  except pw.IntegrityError:
     return Codes.ERR_EXISTENT_EMAIL
 
 
