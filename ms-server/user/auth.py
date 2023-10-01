@@ -119,6 +119,17 @@ async def get_current_user(
   return user
 
 
+async def get_current_user_ws(token: str, token_type: Optional[str] = None, hard: bool = True):
+  user, right_type = verify_jwt_token(token, token_type)
+  guest_flag = token_type is not None and hasAccess(
+      UserGroup.Guest, token_type)
+  if user is None or not right_type:
+    if not guest_flag and hard:
+      return None
+    return guest_user
+  return user
+
+
 class CurrentUser:
   """
   Get the current user based on the provided authentication token.

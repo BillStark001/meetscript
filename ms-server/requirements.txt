@@ -1,6 +1,7 @@
 fastapi[all]
 uvicorn
 python-jose
+websockets
 peewee
 peewee-async
 aiosqlite

@@ -37,4 +37,11 @@ _descs = _gen_desc()
 
 def getDescription(code: int) -> tuple:
   return _descs.get(code, (code, 'Unknown Status.', 200))
+
+def getDescriptionWs(code: int) -> dict:
+  return dict(code=4000 + code, reason=getDescription(code)[1])
+
+def getDescriptionHttp(code: int) -> dict:
+  _, detail, status_code = getDescription(code)
+  return dict(status_code=status_code, detail=detail)
     
