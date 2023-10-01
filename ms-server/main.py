@@ -1,3 +1,4 @@
+import asyncio
 from fastapi.staticfiles import StaticFiles
 
 from base import app

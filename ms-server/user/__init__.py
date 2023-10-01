@@ -1,4 +1,4 @@
-# main.py
+import asyncio
 
 from fastapi import Depends, HTTPException
 from fastapi.responses import Response
@@ -7,11 +7,12 @@ from pydantic import BaseModel
 
 from constants import Codes, getDescription
 from config import AppConfig
-from user.model import create_user, authenticate_user
+from user.model import create_user, authenticate_user, initialize_db
 from user.auth import create_jwt_token
 
 from base import app
 from constants import Token
+
 
 class RegisterForm(BaseModel):
   email: str
@@ -25,7 +26,7 @@ async def login(
 ):
   email = form_data.username
   password = form_data.password
-  code, user = authenticate_user(email, password)  # Use your existing authentication function
+  code, user = await authenticate_user(email, password)  # Use your existing authentication function
 
   if code == Codes.DONE:
     token = create_jwt_token( 
@@ -50,7 +51,7 @@ async def login(
 async def register(
   form_data: RegisterForm
 ):
-  code = create_user(form_data.email, form_data.username, form_data.password)
+  code = await create_user(form_data.email, form_data.username, form_data.password)
   if code == Codes.DONE:
     return {"detail": "Done."}
   
@@ -58,3 +59,5 @@ async def register(
     _, desc, status = getDescription(code)
     raise HTTPException(status_code=status, detail=desc)
   
+  
+initialize_db()
