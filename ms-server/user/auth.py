@@ -2,21 +2,23 @@ from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.logger import logger
+from aenum import EnumType
 
 from typing import Optional
 
 from config import AppConfig
 
-from user.model import User, get_user
-from constants import Codes, getDescription, Token, hasAccess
+from user.model import User, get_user, guest_user
+from constants import Codes, getDescription, Token, hasAccess, UserGroup
 
 
 def create_jwt_token(
     data: User,
-    type: str = Token.Refresh,
+    token_type: str = Token.Refresh,
     expires_delta: timedelta = None
 ):
-  to_encode = {'sub': data.email, 'name': data.username, 'type': type}
+  to_encode = {'sub': data.email, 'name': data.username, 'type': token_type}
   utcnow = datetime.utcnow()
   if expires_delta:
     expire = utcnow + expires_delta
@@ -30,8 +32,10 @@ def create_jwt_token(
 
 def verify_jwt_token(
     token: str,
-    type: Optional[str] = None
+    token_type: Optional[str] = None
 ):
+  if not token:
+    return None, True
   try:
     payload = jwt.decode(token, AppConfig.JwtSecretKey, algorithms=['HS256'])
   except JWTError:
@@ -41,7 +45,7 @@ def verify_jwt_token(
   user = get_user(email)
   if user is not None and user.pw_update > issue_time:
     return None, True  # the token is expired
-  if type is not None and type != payload.get('type'):
+  if token_type is not None and token_type != payload.get('type'):
     return user, False  # wrong type
   return user, True
 
@@ -53,51 +57,61 @@ _, _wt_desc, _wt_code = getDescription(Codes.ERR_WRONG_TOKEN_TYPE)
 def get_current_user(
     request: Request,
     response: Response,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="token")),
-    type: Optional[str] = None,
+    token: str = Depends(OAuth2PasswordBearer(
+        tokenUrl="token", auto_error=False)),
+    token_type: Optional[str] = None,
     hard: bool = True
 ) -> Optional[User]:
-
-  def _v(type: str):
-    user, right_type = verify_jwt_token(token, type)
-    _type = type if type is not None else Token.Refresh
+  def _v(token_type: str):
+    user, right_type = verify_jwt_token(token, token_type)
+    _type = token_type if token_type is not None else Token.Refresh.value
     if (user is None or not right_type) and _type in request.cookies:
       user, right_type = verify_jwt_token(request.cookies.get(_type), None)
     return user, right_type
 
   # first try auth header and then cookie
-  user, right_type = _v(type)
+  user, right_type = _v(token_type)
 
   # if type is none, right_type is guaranteed to be true
-  if user is not None and type is not None and \
-          type != Token.Refresh and not right_type:
+  if token_type is not None and \
+          token_type != Token.Refresh and (user is None or not right_type):
     # try to get the refresh token
-    user_refresh, right_type = _v(Token.Refresh)
+    user_refresh, right_type = _v(Token.Refresh.value)
     flag = True
+
     if user_refresh is None:
       # there is no valid refresh token
       right_type = False
       flag = False
-    elif user_refresh.email != user.email:
+
+    elif user is None or user_refresh.email != user.email:
       # there is a refresh token for another user
       user = user_refresh
-    if flag and hasAccess(user.group, type):
+
+    if flag and hasAccess(user.group, token_type):
       # there is valid refresh token, grant a new access token if accessible
-      access_token = create_jwt_token(user, type, AppConfig.AccessTokenExpires)
+      access_token = create_jwt_token(
+          user, token_type, AppConfig.AccessTokenExpires)
       response.set_cookie(
-          type,
+          token_type,
           access_token,
           expires=AppConfig.AccessTokenExpires,
           httponly=True
       )
       right_type = True
 
-  # if hard mode, raise error
+  # if hard mode, raise error or guest user
   # else return user if available
+  guest_flag = token_type is not None and hasAccess(
+      UserGroup.Guest, token_type)
   if user is None and hard:
+    if guest_flag:
+      return guest_user
     raise HTTPException(_af_code, detail=_af_desc, headers={
                         "WWW-Authenticate": "Bearer"})
   if not right_type and hard:
+    if guest_flag:
+      return guest_user
     raise HTTPException(_wt_code, detail=_wt_desc, headers={
                         "WWW-Authenticate": "Bearer"})
 
@@ -118,19 +132,21 @@ class CurrentUser:
   Returns:
       Optional[User]: The authenticated user if successful, else None.
   """
-  
+
   def __init__(
-    self, 
-    type: Optional[str] = None,
-    hard: bool = True
+      self,
+      token_type: Optional[str] = None,
+      hard: bool = True
   ):
-    self.type = type
+    self.token_type = token_type.value if type(
+        type(token_type)) == EnumType else token_type
     self.hard = hard
-  
+
   def __call__(
-    self, 
-    request: Request,
-    response: Response,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="token")),
+      self,
+      request: Request,
+      response: Response,
+      token: str = Depends(OAuth2PasswordBearer(
+          tokenUrl="token", auto_error=False)),
   ):
-    return get_current_user(request, response, token, self.type, self.hard)
+    return get_current_user(request, response, token, self.token_type, self.hard)

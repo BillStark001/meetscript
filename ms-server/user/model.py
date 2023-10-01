@@ -45,6 +45,9 @@ class User(pw.Model):
     if save:
       self.save()
     return Codes.DONE
+  
+
+guest_user = User(email='__guest__', pw_hash='', username='guest', group=UserGroup.Guest)
 
 
 def create_user(email: str, username: str, password: str, group: str = UserGroup.User):
