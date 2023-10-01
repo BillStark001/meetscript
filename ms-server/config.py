@@ -1,23 +1,14 @@
 import os
+from utils.data import parse_timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def _i(data):
-  ret = -1
-  try:
-    ret = int(data)
-  except:
-    pass
-  if ret < 1:
-    ret = 1
-  return ret
-
 class AppConfig:
   
   _JWT_SECRET_KEY = os.environ.get('SECRET_KEY') or 'SECRET_KEY'
-  _JWT_EXPIRE_MINUTES = _i(os.environ.get('JWT_EXPIRE_MINUTES'))
-  _JWT_REFRESH_EXPIRE_DAYS = _i(os.environ.get('JWT_REFRESH_EXPIRE_DAYS'))
+  _ACCESS_TOKEN_EXPIRES = parse_timedelta(os.environ.get('ACCESS_TOKEN_EXPIRES') or '5min')
+  _REFRESH_TOKEN_EXPIRES = parse_timedelta(os.environ.get('REFRESH_TOKEN_EXPIRES') or '180d')
   
   _HMAC_SALT = (os.environ.get('HMAC_SALT') or 'HMAC_SALT').encode()
   
@@ -29,13 +20,13 @@ class AppConfig:
   
   @classmethod
   @property
-  def JwtExpireMinutes(cls):
-    return cls._JWT_EXPIRE_MINUTES
+  def AccessTokenExpires(cls):
+    return cls._ACCESS_TOKEN_EXPIRES
   
   @classmethod
   @property
-  def JwtRefreshExpireDays(cls):
-    return cls._JWT_REFRESH_EXPIRE_DAYS
+  def RefreshTokenExpires(cls):
+    return cls._REFRESH_TOKEN_EXPIRES
 
   @classmethod
   @property

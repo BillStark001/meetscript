@@ -1,6 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 # app
 
@@ -14,5 +13,3 @@ async def root():
 @app.get('/api')
 async def api_root():
   return {'detail': 'Server is running.'}
-
-app.mount("/", StaticFiles(directory="wwwroot"), name="static")

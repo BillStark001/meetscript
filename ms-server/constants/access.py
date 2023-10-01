@@ -1,0 +1,98 @@
+from aenum import Enum, skip, EnumType
+from typing import Optional, Dict, Set
+import json
+
+
+class UserGroup(str, Enum):
+  Guest = 'guest'
+  User = 'user'
+  Admin = 'admin'
+  Root = 'root'
+
+
+_g_id = 0
+
+
+def _groups(*g: str):
+  global _g_id
+  ret = json.dumps((str(_g_id), *g))
+  _g_id += 1
+  return ret
+
+
+_g_hierarchy = [
+    UserGroup.Guest,
+    UserGroup.User,
+    UserGroup.Admin,
+    UserGroup.Root,
+]
+
+
+def _group(g: str):
+  global _g_id
+  ret = json.dumps((str(_g_id), *_g_hierarchy[_g_hierarchy.index(g):]))
+  _g_id += 1
+  return ret
+
+
+def _parse_groups(ret: str):
+  g_arr = json.loads(ret)[1:]
+  return [UserGroup.Guest._value_] if not g_arr else g_arr
+
+
+# define access here
+class Token(str, Enum):
+
+  Refresh = _group(UserGroup.User)
+
+  @skip
+  class Access(str, Enum):
+
+    General = _group(UserGroup.User)
+
+    @skip
+    class Meeting(str, Enum):
+
+      InitOrClose = _group(UserGroup.User)
+      Provide = _group(UserGroup.User)
+      Consume = _group(UserGroup.Guest)
+
+    @skip
+    class User(str, Enum):
+
+      Register = _group(UserGroup.Guest)
+      Login = _group(UserGroup.Guest)
+      ChangeInfo = _group(UserGroup.Guest)
+
+
+def _gen_access(e: Enum, prefix: str = '', group_map: Optional[Dict[str, Set[str]]] = None):
+  str_fields = []
+  cls_fields = []
+  name = e.__name__
+  group_map = {} if group_map is None else group_map
+
+  for k, v in e.__dict__.items():
+    if type(v) == e:
+      str_fields.append((k, v))
+    elif type(v) == EnumType:
+      cls_fields.append((k, v))
+
+  for field, groups in str_fields:
+    field_fullname = prefix + '.' + field if prefix else field
+    group_map[field_fullname] = set(_parse_groups(groups))
+    groups._value_ = field_fullname
+
+  for field, enum in cls_fields:
+    field_fullname = prefix + '.' + field if prefix else field
+    _gen_access(enum, field_fullname, group_map)
+
+  return group_map
+
+
+_group_map = _gen_access(Token, 'Token')
+
+
+def hasAccess(group: str, access: str):
+  if access not in _group_map:
+    return True
+  return group in _group_map[access]

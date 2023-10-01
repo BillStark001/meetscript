@@ -3,17 +3,17 @@
 from fastapi import FastAPI, Depends, HTTPException, Cookie
 from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 from pydantic import BaseModel
 
-from codes import Codes, getDescription
+from constants import Codes, getDescription
 from config import AppConfig
 from user.model import create_user, authenticate_user
 from user.auth import create_jwt_token, verify_jwt_token
 
 from base import app
-from constants import TokenType
+from constants import Token
 
 class RegisterForm(BaseModel):
   email: str
@@ -32,16 +32,16 @@ async def login(
   if code == Codes.DONE:
     token = create_jwt_token(
       user, 
-      TokenType.refresh, 
-      timedelta(days=AppConfig.JwtRefreshExpireDays)
+      Token.Refresh, 
+      AppConfig.RefreshTokenExpires
     )
     response.set_cookie(
-      key=TokenType.refresh, 
+      key=Token.Refresh, 
       value=token, 
-      expires=timedelta(minutes=AppConfig.JwtExpireMinutes), 
+      expires=AppConfig.RefreshTokenExpires, 
       httponly=True
     )
-    return {"detail": "Done.", TokenType.refresh: token}
+    return {"detail": "Done.", Token.Refresh: token}
   
   else:
     _, desc, status = getDescription(code)

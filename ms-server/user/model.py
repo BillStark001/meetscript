@@ -2,7 +2,7 @@ import peewee as pw
 from datetime import datetime
 import pytz
 
-from codes import Codes
+from constants import Codes
 import user.format as f
 from constants import UserGroup
 
@@ -47,7 +47,7 @@ class User(pw.Model):
     return Codes.DONE
 
 
-def create_user(email: str, username: str, password: str, group: str = UserGroup.user):
+def create_user(email: str, username: str, password: str, group: str = UserGroup.User):
 
   if not f.is_valid_email(email):
     return Codes.ERR_INVALID_EMAIL
