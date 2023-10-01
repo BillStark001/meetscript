@@ -9,8 +9,8 @@ class Codes:
   ERR_EXISTENT_EMAIL = 15
   
   ERR_WRONG_UNAME_OR_PW = 30
-  ERR_AUTH_FAILED = 50, 'Could not validate credentials', 401
-  ERR_WRONG_TOKEN_TYPE = 51, 'Wrong token type', 401
+  ERR_AUTH_FAILED: int = 50, 'Could not validate credentials', 401
+  ERR_WRONG_TOKEN_TYPE: int = 51, 'Wrong token type', 401
   
 def _gen_desc():
   res = {}

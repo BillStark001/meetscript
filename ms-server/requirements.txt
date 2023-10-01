@@ -4,6 +4,7 @@ python-jose
 peewee
 python-dotenv
 pydantic
+pydantic-yaml
 pytz
 torch
 openai-whisper

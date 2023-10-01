@@ -2,10 +2,13 @@ from aenum import Enum, skip, EnumType
 from typing import Optional, Dict, Set
 import json
 
+from config import AppConfig
+
 
 class UserGroup(str, Enum):
   Guest = 'guest'
   User = 'user'
+  Host = 'host'
   Admin = 'admin'
   Root = 'root'
 
@@ -23,12 +26,15 @@ def _groups(*g: str):
 _g_hierarchy = [
     UserGroup.Guest,
     UserGroup.User,
+    UserGroup.Host,
     UserGroup.Admin,
     UserGroup.Root,
 ]
 
 
 def _group(g: str):
+  if not g in _g_hierarchy:
+    return _group(UserGroup.Root)
   global _g_id
   ret = json.dumps((str(_g_id), *_g_hierarchy[_g_hierarchy.index(g):]))
   _g_id += 1
@@ -53,16 +59,16 @@ class Token(str, Enum):
     @skip
     class Meeting(str, Enum):
 
-      InitOrClose = _group(UserGroup.User)
+      InitOrClose = _group(UserGroup.Host)
       Provide = _group(UserGroup.User)
       Consume = _group(UserGroup.Guest)
 
     @skip
     class User(str, Enum):
 
-      Register = _group(UserGroup.Guest)
-      Login = _group(UserGroup.Guest)
-      ChangeInfo = _group(UserGroup.Guest)
+      Register = _groups(UserGroup.Guest, UserGroup.Admin, UserGroup.Root)
+      Login = _groups(UserGroup.Guest)
+      ChangeInfo = _group(UserGroup.User)
 
 
 def _gen_access(e: Enum, prefix: str = '', group_map: Optional[Dict[str, Set[str]]] = None):
@@ -90,6 +96,8 @@ def _gen_access(e: Enum, prefix: str = '', group_map: Optional[Dict[str, Set[str
 
 
 _group_map = _gen_access(Token, 'Token')
+for field, data in AppConfig.TokenAccessOverride.items():
+  _group_map[field] = set(_parse_groups(_group(data)) if isinstance(data, str) else data)
 
 
 def hasAccess(group: str, access: str):

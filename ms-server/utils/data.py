@@ -6,6 +6,21 @@ _TIME_REGEX = re.compile(
     re.IGNORECASE
 )
 
+_TIME_DELTA_DICT = {
+  'mic': lambda d: d.microseconds or None,
+  's': lambda d: d.seconds or None,
+  'd': lambda d: d.days or None
+}
+
+
+def create_timedelta_str(delta: timedelta):
+  res = ''
+  for k, f in _TIME_DELTA_DICT.items():
+    res_f = f(delta)
+    if res_f:
+      res += f'{f(delta)}{k}'
+  return res or '0s'
+
 
 def parse_timedelta(input_string: str):
   sp = timedelta()

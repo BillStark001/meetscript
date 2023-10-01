@@ -30,7 +30,7 @@ async def login(
   code, user = authenticate_user(email, password)  # Use your existing authentication function
 
   if code == Codes.DONE:
-    token = create_jwt_token(
+    token = create_jwt_token( 
       user, 
       Token.Refresh, 
       AppConfig.RefreshTokenExpires

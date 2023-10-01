@@ -4,5 +4,4 @@ from base import app
 import user
 
 
-
-app.mount("/", StaticFiles(directory="wwwroot"), name="static")
+app.mount("/", StaticFiles(directory="../ms-server/wwwroot"), name="static")

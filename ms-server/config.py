@@ -1,34 +1,45 @@
 import os
-from utils.data import parse_timedelta
+from fastapi.logger import logger
 from dotenv import load_dotenv
+from pydantic import BaseModel, field_serializer, Field, validator
+from pydantic_yaml import parse_yaml_file_as, to_yaml_file
+from datetime import timedelta
+from typing import Dict, Union, List
+
+
+from utils.data import parse_timedelta, create_timedelta_str
 
 load_dotenv()
 
-class AppConfig:
-  
-  _JWT_SECRET_KEY = os.environ.get('SECRET_KEY') or 'SECRET_KEY'
-  _ACCESS_TOKEN_EXPIRES = parse_timedelta(os.environ.get('ACCESS_TOKEN_EXPIRES') or '5min')
-  _REFRESH_TOKEN_EXPIRES = parse_timedelta(os.environ.get('REFRESH_TOKEN_EXPIRES') or '180d')
-  
-  _HMAC_SALT = (os.environ.get('HMAC_SALT') or 'HMAC_SALT').encode()
-  
 
-  @classmethod
-  @property
-  def JwtSecretKey(cls):
-    return cls._JWT_SECRET_KEY
-  
-  @classmethod
-  @property
-  def AccessTokenExpires(cls):
-    return cls._ACCESS_TOKEN_EXPIRES
-  
-  @classmethod
-  @property
-  def RefreshTokenExpires(cls):
-    return cls._REFRESH_TOKEN_EXPIRES
 
+
+class AppConfigModel(BaseModel):
+  
+  JwtSecretKey: str = 'JWT Secret Key'
+  HmacSalt: bytes = b'HMAC Salt'
+  
+  AccessTokenExpires: timedelta = parse_timedelta('5min')
+  RefreshTokenExpires: timedelta = parse_timedelta('180d')
+  
+  TokenAccessOverride: Dict[str, Union[str, List[str]]] = Field(default_factory=dict)
+  
+  @field_serializer('AccessTokenExpires', 'RefreshTokenExpires')
+  def serialize_timedelta(self, delta: timedelta):
+    return create_timedelta_str(delta)
+  
+  @validator('AccessTokenExpires', 'RefreshTokenExpires', pre=True)
   @classmethod
-  @property
-  def HmacSalt(cls):
-    return cls._HMAC_SALT
+  def validate_timedelta(cls, delta: str):
+    return parse_timedelta(delta)
+
+_CONFIG_PATH = './config.yaml'
+
+try:
+  AppConfig = parse_yaml_file_as(AppConfigModel, _CONFIG_PATH)
+except Exception as e:
+  logger.warning(e)
+  AppConfig = AppConfigModel()
+  if not os.path.exists(_CONFIG_PATH):
+    to_yaml_file(_CONFIG_PATH, AppConfig)
+

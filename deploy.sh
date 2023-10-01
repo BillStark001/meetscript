@@ -11,5 +11,6 @@ mkdir ms-server/wwwroot
 cp -r ms-frontend/dist/* ms-server/wwwroot/
 
 echo "Launching Server..."
-cd ms-server
-uvicorn main:app --port 8000
+mkdir runtime
+cd runtime
+uvicorn main:app --port 8000 --app-dir ../ms-server
