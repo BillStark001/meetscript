@@ -9,7 +9,7 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
-  return FileResponse("wwwroot/index.html")
+  return FileResponse("../ms-server/wwwroot/index.html")
 
 @app.get('/api')
 async def api_root():

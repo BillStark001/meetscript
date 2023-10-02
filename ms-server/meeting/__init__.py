@@ -1,6 +1,9 @@
-from typing import Optional
+from typing import Optional, Set
+import dataclasses
 
 import uuid
+import numpy as np
+import asyncio
 import struct
 from datetime import datetime
 import json
@@ -8,6 +11,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from fastapi import Depends, HTTPException, WebSocket
+from starlette.websockets import WebSocketState
 
 from base import app
 from user.model import User
@@ -18,9 +22,24 @@ from config import AppConfig
 from meeting.model import add_record, fetch_records, initialize_db
 from meeting.handler import MeetingHandler
 
-_handler: Optional[MeetingHandler] = None
-_active_sockets = set()
+from transcript.worker import TranscriptionResult
 
+_handler: Optional[MeetingHandler] = None
+_active_sockets: Set[WebSocket] = set()
+
+async def _send_transcription(data: TranscriptionResult):
+  dead_sockets = []
+  crs = []
+  for s in _active_sockets:
+    if s.application_state == WebSocketState.DISCONNECTED:
+      dead_sockets.append(s)
+      continue
+    crs.append(s.send_json(dataclasses.asdict(data)))
+  await asyncio.gather(*crs)
+  for s in dead_sockets:
+    if s in _active_sockets:
+      _active_sockets.remove(s)
+    
 
 class InitParams(BaseModel):
   session: Optional[str] = None
@@ -41,11 +60,13 @@ async def init(
   if _handler is not None:
     raise HTTPException(**_emst)
   _handler = MeetingHandler(
+      callback=_send_transcription,
       session=form_data.session,
       name=form_data.name,
       time=form_data.time
   )
   await _handler.init()
+  _handler.start_providing()
   return {'detail': 'Done.', 'user': user.email if user else None}
 
 
@@ -56,6 +77,7 @@ async def close(
   global _handler
   if _handler is None:
     raise HTTPException(**_emns)
+  _handler.stop_providing()
   await _handler.close()
   _handler = None
   return {'detail': 'Done.', 'user': user.email if user else None}
@@ -109,6 +131,7 @@ async def provide(websocket: WebSocket, token: str):
   try:
     while True:
       user_input = await websocket.receive_bytes()
+      await asyncio.sleep(0.01)
       # see if it is control data
       input_json = _j(user_input)
       if input_json is not None and input_json.get('code') == 1:
@@ -117,9 +140,13 @@ async def provide(websocket: WebSocket, token: str):
       if not _handler.provider_active(provider_addr):
         continue  # discard since the handler is receiving somewhere else
 
-      timestamp_millis = struct.unpack('Q', user_input[:8])[0]
+      timestamp_millis = struct.unpack('>Q', user_input[:8])[0]
+      print('recv', timestamp_millis)
       # time_obj = datetime.utcfromtimestamp(timestamp_millis / 1000)
-      audio_data = user_input[8:]  # sr=16000, d=16bit
+      audio_data_raw = user_input[8:]  
+      audio_data_arr = np.frombuffer(audio_data_raw, dtype=np.float32) * 32767
+      audio_data = audio_data_arr.astype(np.int16).tobytes()
+      # sr=16000, d=16bit
       await _handler.enqueue_audio_data(timestamp_millis, audio_data)
 
   finally:

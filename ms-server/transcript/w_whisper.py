@@ -34,7 +34,7 @@ class WhisperWorker(Worker):
 
     self.model: Optional[whisper.Whisper] = None
     self.init_params: str = model
-    self.queue = asyncio.Queue()
+    self.queue = asyncio.Queue(maxsize=65536)
 
     self.last_element = None
 
