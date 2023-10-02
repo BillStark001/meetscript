@@ -92,7 +92,8 @@ class MeetingHandler:
         await add_record(
           self.session, 
           datetime.utcfromtimestamp(result_raw.start / 1000), 
-          result_raw.text
+          result_raw.text,
+          result_raw.lang,
         )
       await self.callback(result_raw)
       

@@ -1,7 +1,8 @@
-from typing import Optional, Set
+from typing import Optional, Set, Callable
 import dataclasses
 
 import uuid
+import sys
 import numpy as np
 import asyncio
 import struct
@@ -109,9 +110,20 @@ def _j(x: bytes):
   except:
     return None
 
+def float32_to_int16(audio_data_raw: bytes) -> bytes:
+  audio_data_arr = np.frombuffer(audio_data_raw, dtype=np.float32) * 0x8000
+  audio_data_arr[audio_data_arr > 0x7fff] = 0x7fff
+  audio_data = audio_data_arr.astype(np.int16).tobytes()
+  return audio_data
+
+def int16_endian_cvrt(big_endian_array: bytes, le2be: bool = False) -> bytes:
+  big_endian_array = np.frombuffer(big_endian_array, dtype=np.dtype('<f2' if le2be else '>f2'))
+  little_endian_array = big_endian_array.astype('>f2' if le2be else '<f2')
+  little_endian_buffer = little_endian_array.tobytes()
+  return little_endian_buffer
 
 @app.websocket('/ws/meet/provide')
-async def provide(websocket: WebSocket, token: str):
+async def provide(websocket: WebSocket, token: str, format: str):
   global _handler
   global _active_sockets
   # authenticate
@@ -128,6 +140,16 @@ async def provide(websocket: WebSocket, token: str):
   await websocket.send_json({'code': 0, 'detail': 'Connection Accepted.'})
   provider_addr = (websocket.client.host, websocket.client.port)
   _active_sockets.add(websocket)
+  
+  # prepare audio handler
+  audio_handler: Callable[[bytes], bytes] = lambda x: x
+  if format == 'int16be' and sys.byteorder != 'big':
+    audio_handler = int16_endian_cvrt
+  elif (format == 'int16' or format == 'int16le') and sys.byteorder == 'big':
+    audio_handler = lambda x: int16_endian_cvrt(x, True)
+  elif format == 'float32':
+    audio_handler = float32_to_int16
+  
   try:
     while True:
       user_input = await websocket.receive_bytes()
@@ -143,8 +165,7 @@ async def provide(websocket: WebSocket, token: str):
       timestamp_millis = struct.unpack('>Q', user_input[:8])[0]
       # time_obj = datetime.utcfromtimestamp(timestamp_millis / 1000)
       audio_data_raw = user_input[8:]  
-      audio_data_arr = np.frombuffer(audio_data_raw, dtype=np.float32)
-      audio_data = (audio_data_arr * 32767).astype(np.int16).tobytes()
+      audio_data = audio_handler(audio_data_raw)
       # sr=16000, d=16bit
       await _handler.enqueue_audio_data(timestamp_millis, audio_data)
 

@@ -28,6 +28,7 @@ def initialize_db(target: str = 'default'):
 class MeetingRecord(pw.Model):
   session = pw.CharField(max_length=36, default='')
   time = pw.DateTimeField(default=datetime.utcfromtimestamp(0))
+  lang = pw.CharField(max_length=8, default='')
   text = pw.TextField(default='')
   translate1 = pw.TextField(default='')
   translate2 = pw.TextField(default='')
@@ -38,22 +39,35 @@ class MeetingRecord(pw.Model):
     database = db
 
 
-async def add_record(session: str, time: datetime, text: str):
+async def add_record(
+  session: str, 
+  time: datetime, 
+  text: str, 
+  lang: Optional[str] = None
+):
   try:
     await objects.create(
         MeetingRecord,
         session=session,
         time=time,
         text=text,
+        lang=lang or ''
     )
   except pw.IntegrityError:
     return Codes.ERR_SESSION_DB
 
 
-async def fetch_records(session: str, time_start: datetime, time_end: Optional[datetime] = None):
+async def fetch_records(
+  session: str, 
+  time_start: datetime, 
+  time_end: Optional[datetime] = None,
+  lang: Optional[str] = None,
+):
   where_clause = (MeetingRecord.session == session) & \
       (MeetingRecord.time >= time_start)
   if time_end is not None:
     where_clause = where_clause & (MeetingRecord.time <= time_end)
+  if lang is not None and lang != '':
+    where_clause = where_clause & (MeetingRecord.lang.startswith(lang))
   results = await objects.execute(MeetingRecord.select().where(where_clause))
   return results

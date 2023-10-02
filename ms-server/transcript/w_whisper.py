@@ -17,12 +17,13 @@ ONE_MS_BYTES = np.array([0] * 16, dtype=np.int16).tobytes()
 GAP_FILL_MAX = 2000
 
 
-def convert_segment(s: Dict[str, Any], complete: bool, start_time: int):
+def convert_segment(s: Dict[str, Any], complete: bool, start_time: int, lang: str = ''):
   return TranscriptionResult(
       partial=not complete,
       start=int(s['start'] * 1000) + start_time,
       end=int(s['end'] * 1000) + start_time,
       text=s['text'],
+      lang=lang
   )
 
 
@@ -111,10 +112,13 @@ class WhisperWorker(Worker):
         .flatten().astype(np.float32) / 32768.0
 
     # run the model
-    segments: List[Dict[str, Any]] = (await _run_async(
+    raw_result: List[Dict[str, Any]] = await _run_async(
         lambda: self.model.transcribe(
             data_array, fp16=torch.cuda.is_available()
-        )))['segments']
+        ))
+    segments = raw_result['segments']
+    lang = raw_result['language']
+    
 
     incomplete_segment = None if force_complete or len(
         segments) == 0 else segments[-1]
@@ -123,7 +127,7 @@ class WhisperWorker(Worker):
     result = []
 
     # handle complete segments
-    result.extend(convert_segment(s, True, start_time)
+    result.extend(convert_segment(s, True, start_time, lang)
                   for s in complete_segments)
 
     # handle incomplete segments
@@ -131,7 +135,7 @@ class WhisperWorker(Worker):
       
       assert self.last_element is None, 'incomplete segment and last element should be mutually exclusive'
       split_start = int(incomplete_segment['start'] * 1000) * len(ONE_MS_BYTES)
-      incomplete_result = convert_segment(incomplete_segment, False, start_time)
+      incomplete_result = convert_segment(incomplete_segment, False, start_time, lang)
       new_time_start = incomplete_result.start
       new_sample = data_bytes[split_start:]
       

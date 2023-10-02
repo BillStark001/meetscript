@@ -32,13 +32,11 @@ const createWs = async (token: string, deviceId: string) => {
 
   socket = new WebSocket(`${
     location.protocol == 'https:' ? 'wss:' : 'ws:'
-  }//${location.host.replace(':5173', ':8000')}/ws/meet/provide?token=${encodeURIComponent(token)}`);
+  }//${location.host.replace(':5173', ':8000')}/ws/meet/provide?token=${encodeURIComponent(token)}&format=int16`);
 
   socket.onopen = function () {
     console.log('opened');
   };
-
-  let iv: NodeJS.Timeout | undefined = undefined;
   
   socket.onmessage = function (event) {
     let eventData: Record<string, unknown> | undefined = undefined;
@@ -51,10 +49,6 @@ const createWs = async (token: string, deviceId: string) => {
     if (eventData?.['code'] === 0) {
       mediaRecorder.start();
       console.log('start');
-      iv = setInterval(() => {
-        mediaRecorder.stop();
-        mediaRecorder.start();
-      }, 200);
     }
   };
   
@@ -123,8 +117,8 @@ function App() {
         </p>
         <p>
           <select value={aid} onChange={(e) => setAid(e.target.value)}>
-            <option value={''} selected={aid == ''}>[SELECT]</option>
-            {audioDevices.map(({ value, text }) => <option value={value} selected={aid == value}>{text}</option>)}
+            <option value={''}>[SELECT]</option>
+            {audioDevices.map(({ value, text }) => <option value={value} key={value}>{text}</option>)}
           </select>
         </p>
         <p>

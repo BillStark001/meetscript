@@ -33,3 +33,4 @@ class TranscriptionResult:
   start: int = 0
   end: int = 0
   text: str = ''
+  lang: str = ''
