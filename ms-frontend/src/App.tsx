@@ -41,20 +41,20 @@ const createWs = async (token: string, deviceId: string) => {
   let iv: NodeJS.Timeout | undefined = undefined;
   
   socket.onmessage = function (event) {
-    console.log('message', event.data);
-    let eventData = { code: 114514 };
+    let eventData: Record<string, unknown> | undefined = undefined;
     try {
       eventData = JSON.parse(event.data);
     } catch (e) {
-      eventData = { code: 1919810 };
+      eventData = undefined;
     }
-    if (eventData['code'] === 0) {
+    console.log('message', eventData || event.data);
+    if (eventData?.['code'] === 0) {
       mediaRecorder.start();
       console.log('start');
       iv = setInterval(() => {
         mediaRecorder.stop();
         mediaRecorder.start();
-      }, 100);
+      }, 200);
     }
   };
   
@@ -64,7 +64,7 @@ const createWs = async (token: string, deviceId: string) => {
   
   socket.onclose = function (event) {
     console.log('closed', event.code, event.reason);
-    clearInterval(iv);
+    // clearInterval(iv);
     mediaRecorder.stop();
   };
   

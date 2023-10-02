@@ -40,13 +40,13 @@ async def test():
     audio = audio[L * 32:]
   S.append((last_time, audio[:L * 32]))
   
-  worker = WhisperWorker('small')
+  worker = WhisperWorker('medium')
   await worker.init_model()
   
   print(f'CUDA is available: {torch.cuda.is_available()}')
   
   tstart_all = time.time()
-  for i in range(len(S) // 4 + 1):
+  for i in range(len(S) // 4 + 1): 
     if not S:
       break
     Sh = S[:4]

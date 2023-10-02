@@ -22,11 +22,13 @@ export const initAudioDevice = async (deviceId: string, onData: (data: Blob) => 
   });
 
   const mediaRecorder = new MediaRecorder(stream, {
-    mimeType: 'audio/webm',
+    mimeType: 'audio/webm;rate=16000',
   });
 
 
-  const audioCtx = new AudioContext();
+  const audioCtx = new AudioContext({
+    sampleRate: 16000,
+  });
 
   const _dav = async (ev: BlobEvent) => {
     if (ev.data.size == 0)
@@ -36,7 +38,6 @@ export const initAudioDevice = async (deviceId: string, onData: (data: Blob) => 
     const uint8Array = new Uint8Array(8);
     const dataView = new DataView(uint8Array.buffer);
     dataView.setBigUint64(0, BigInt(currentUTCMilliseconds), false);
-      
     const audioBuffer = await audioCtx.decodeAudioData(await ev.data.arrayBuffer());
 
     onData(new Blob([uint8Array, audioBuffer.getChannelData(0)]));

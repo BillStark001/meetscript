@@ -41,7 +41,7 @@ class MeetingHandler:
 
   async def init(self):
     if self.worker is None:
-      self.worker = WhisperWorker('tiny')
+      self.worker = WhisperWorker('medium')
     initialize_db(self.session)
     await self.worker.init_model()
 
@@ -57,7 +57,7 @@ class MeetingHandler:
     if provider in self.provider_set:
       self.provider_set.remove(provider)
     if self.provider == provider:
-      self.provider = None
+      self.provider = None 
 
   def pick_provider(self):
     if len(self.provider_set) > 0:

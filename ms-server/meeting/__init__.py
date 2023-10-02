@@ -141,11 +141,10 @@ async def provide(websocket: WebSocket, token: str):
         continue  # discard since the handler is receiving somewhere else
 
       timestamp_millis = struct.unpack('>Q', user_input[:8])[0]
-      print('recv', timestamp_millis)
       # time_obj = datetime.utcfromtimestamp(timestamp_millis / 1000)
       audio_data_raw = user_input[8:]  
-      audio_data_arr = np.frombuffer(audio_data_raw, dtype=np.float32) * 32767
-      audio_data = audio_data_arr.astype(np.int16).tobytes()
+      audio_data_arr = np.frombuffer(audio_data_raw, dtype=np.float32)
+      audio_data = (audio_data_arr * 32767).astype(np.int16).tobytes()
       # sr=16000, d=16bit
       await _handler.enqueue_audio_data(timestamp_millis, audio_data)
 
