@@ -15,6 +15,8 @@ _run_async = lambda f, *a: asyncio.get_event_loop().run_in_executor(_executor, f
 
 ONE_MS_BYTES = np.array([0] * 16, dtype=np.int16).tobytes()
 GAP_FILL_MAX = 2000
+NO_SPEECH_PROB_THRESHOLD = 0.5
+MAX_SAMPLE_COUNT = len(ONE_MS_BYTES) * 1000 * 8
 
 
 def convert_segment(s: Dict[str, Any], complete: bool, start_time: int, lang: str = ''):
@@ -56,6 +58,9 @@ class WhisperWorker(Worker):
     if len(sample) % 2 == 1:
       sample = sample[:-1]
     await self.queue.put((time, sample))
+    
+  async def discard_chunks(self):
+    self.last_element = None
 
   async def transcribe_once(self) -> List[TranscriptionResult]:
     '''Transcribe the all enqueued chunks and return the result. 
@@ -68,9 +73,11 @@ class WhisperWorker(Worker):
 
     # gather data from queue
     data = []
+    sample_length = 0
     last_time = None
     start_time = None
     force_complete = False
+    max_sample_count_flag = False
 
     if self.last_element is not None:
       time, sample = self.last_element
@@ -79,6 +86,7 @@ class WhisperWorker(Worker):
       start_time = time
       last_time = time + len(sample) // len(ONE_MS_BYTES)
       data.append(sample)
+      sample_length += len(sample)
       self.last_element = None
 
     while not self.queue.empty():
@@ -92,7 +100,9 @@ class WhisperWorker(Worker):
             self.last_element = time, sample
             break
           else:  # fill the gaps
-            data.append(ONE_MS_BYTES * (time - last_time))
+            fill = ONE_MS_BYTES * (time - last_time)
+            data.append(fill)
+            sample_length += len(fill)
         if last_time > time:
           print(f'last_time > time: {last_time}, {time}')
           time = last_time  # shift the time for now
@@ -103,6 +113,14 @@ class WhisperWorker(Worker):
         start_time = time
       last_time = time + len(sample) // len(ONE_MS_BYTES)
       data.append(sample)
+      sample_length += len(sample)
+      
+      # prevent for too long recognition
+      if sample_length > MAX_SAMPLE_COUNT:
+        max_sample_count_flag = True
+        break
+      
+      
 
     if not data or start_time is None:
       return []
@@ -122,13 +140,18 @@ class WhisperWorker(Worker):
 
     incomplete_segment = None if force_complete or len(
         segments) == 0 else segments[-1]
+    # force complete if necessary
+    if incomplete_segment is not None and max_sample_count_flag and \
+      incomplete_segment['start'] == 0:
+      incomplete_segment = None 
+    
     complete_segments = segments if incomplete_segment is None else segments[:-1]
 
     result = []
 
     # handle complete segments
     result.extend(convert_segment(s, True, start_time, lang)
-                  for s in complete_segments)
+                  for s in complete_segments if s['no_speech_prob'] < NO_SPEECH_PROB_THRESHOLD)
 
     # handle incomplete segments
     if incomplete_segment is not None:

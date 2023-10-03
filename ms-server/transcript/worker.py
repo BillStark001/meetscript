@@ -17,6 +17,10 @@ class Worker(abc.ABC):
   @abc.abstractmethod
   async def enqueue_chunk(self, time: int, sample: bytes):
     pass
+  
+  @abc.abstractmethod
+  async def discard_chunks(self):
+    pass
 
   @abc.abstractmethod
   async def transcribe_once(self) -> List['TranscriptionResult']:

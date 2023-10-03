@@ -5,6 +5,14 @@ export type AudioDeviceScheme = {
   text: string;
 };
 
+export type InitAudioDeviceScheme = {
+  start: () => void;
+  stop: () => void;
+  context: AudioContext;
+  input: MediaStreamAudioSourceNode;
+  recorder: ScriptProcessorNode;
+};
+
 export const getAudioDevices = async (): Promise<AudioDeviceScheme[]> => {
   await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000 } });
   const devs = await navigator.mediaDevices.enumerateDevices();
@@ -14,7 +22,7 @@ export const getAudioDevices = async (): Promise<AudioDeviceScheme[]> => {
 };
 
 
-export const initAudioDevice = async (deviceId: string, onData: (data: Blob) => void | undefined) => {
+export const initAudioDevice = async (deviceId: string, onData: (data: Blob) => void | undefined): Promise<InitAudioDeviceScheme> => {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       deviceId,
@@ -49,8 +57,9 @@ export const initAudioDevice = async (deviceId: string, onData: (data: Blob) => 
     const dataView = new DataView(uint8Array.buffer);
     dataView.setBigUint64(0, BigInt(startTime + e.playbackTime * 1000), false);
 
-    if (maxRange > 0.001)
+    if (maxRange > 0.003){
       onData(new Blob([dataView, data]));
+    }
   };
 
   return {

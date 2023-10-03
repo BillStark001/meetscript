@@ -1,81 +1,54 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import reactLogo from './assets/react.svg';
 import viteLogo from '/vite.svg';
 import './App.css';
 import { useTranslation } from 'react-i18next';
 import { atom, useAtom } from 'jotai';
-import { AudioDeviceScheme, getAudioDevices, initAudioDevice } from './sys/mic';
+import { AudioDeviceScheme, getAudioDevices } from './sys/mic';
+import { MeetingSocketHandler, createWs, requireWsToken, useTranscriptorWs } from './api/meeting';
+import { fetchApiRoot } from './api';
+import { useTranscript } from './components/TranscriptView';
 
-const fetchApiRoot = async () => {
-  try {
-    const res = await fetch('/api');
-    return await res.json();
-  } catch (e) {
-    return { error: String(e) };
-  }
-};
-
-const requireWsToken = async () => {
-  const res = await fetch('/api/meet/ws_request');
-  const json = await res.json();
-  return json.access_token;
-};
-
-
-const createWs = async (token: string, deviceId: string) => {
-  let socket: WebSocket | undefined = undefined;
-
-  const sender = (data: Blob) => {
-    socket?.send(data);
-  }
-  const mediaRecorder = await initAudioDevice(deviceId, sender);
-
-  socket = new WebSocket(`${
-    location.protocol == 'https:' ? 'wss:' : 'ws:'
-  }//${location.host.replace(':5173', ':8000')}/ws/meet/provide?token=${encodeURIComponent(token)}&format=int16`);
-
-  socket.onopen = function () {
-    console.log('opened');
-  };
-  
-  socket.onmessage = function (event) {
-    let eventData: Record<string, unknown> | undefined = undefined;
-    try {
-      eventData = JSON.parse(event.data);
-    } catch (e) {
-      eventData = undefined;
-    }
-    console.log('message', eventData || event.data);
-    if (eventData?.['code'] === 0) {
-      mediaRecorder.start();
-      console.log('start');
-    }
-  };
-  
-  socket.onerror = function (error) {
-    console.error(error);
-  };
-  
-  socket.onclose = function (event) {
-    console.log('closed', event.code, event.reason);
-    // clearInterval(iv);
-    mediaRecorder.stop();
-  };
-  
-  
-  return [socket, mediaRecorder];
-};
 
 const audioAtom = atom<AudioDeviceScheme[]>([]);
 
+const getTime = (d: Date) => {
+  const hours = d.getHours().toString().padStart(2, '0');
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  const seconds = d.getSeconds().toString().padStart(2, '0');
+
+  const timeString = `${hours}:${minutes}:${seconds}`;
+  return timeString;
+}
+
 function App() {
   const [count, setCount] = useState(0);
-  const [ret, setRet] = useState('[NONE]');
-  const { t } = useTranslation();
 
+  const [ret, setRet] = useState('[NONE]');
   const [token, setToken] = useState('');
   const [audioDevices, setAudioDevices] = useAtom(audioAtom);
   const [aid, setAid] = useState('');
+
+  const { t } = useTranslation();
+
+  const { history, incomplete, onMessage, clear } = useTranscript();
+  const handler: MeetingSocketHandler = {
+    onStart(_, data) {
+      console.log('started', data);
+    },
+    onStop(eventIn) {
+      const event = eventIn as CloseEvent;
+      console.log('stopped', event.code, event.reason);
+      clear();
+    },
+    onMessage(_, data) {
+      if (data.text === 'Thank you.' || data.text === ' Thank you.')
+        return;
+      onMessage(data);
+    },
+  }
+  const { start, stop } = useTranscriptorWs(token, aid, handler);
+
 
   const tryGetToken = async () => {
     const mightBeToken = await requireWsToken();
@@ -125,9 +98,18 @@ function App() {
           <button onClick={tryGetToken}>{t('tryGetToken')}</button>
           <button onClick={() => getAudioDevices().then(setAudioDevices)}>{t('tryGetAudioDevices')}</button>
           <button onClick={() => {
-            createWs(token, aid);
+            start();
           }}>{t('connect')}</button>
+          <button onClick={() => {
+            stop();
+          }}>{t('disconnect')}</button>
         </p>
+      </div>
+      <div className="card">
+        { history.map(x => <Fragment key={`${x.start}-${x.end}-${x.lang.substring(8)}`}>
+          <span>{x.lang} / {getTime(new Date(x.start))} / {x.text}</span><br/>
+        </Fragment>) }
+        { incomplete && <span>{incomplete.text}</span> }
       </div>
     </>
   );

@@ -159,7 +159,9 @@ async def provide(websocket: WebSocket, token: str, format: str):
       if input_json is not None and input_json.get('code') == 1:
         break  # under user request
       # else treat it like formed data
-      if not _handler.provider_active(provider_addr):
+      if not _handler:
+        break
+      if not _handler.provider_active(provider_addr): 
         continue  # discard since the handler is receiving somewhere else
 
       timestamp_millis = struct.unpack('>Q', user_input[:8])[0]
@@ -170,9 +172,13 @@ async def provide(websocket: WebSocket, token: str, format: str):
       await _handler.enqueue_audio_data(timestamp_millis, audio_data)
 
   finally:
-    _handler.del_provider(provider_addr)
+    if _handler:
+      _handler.del_provider(provider_addr)
     _active_sockets.remove(websocket)
-    await websocket.close()
+    try:
+      await websocket.close()
+    except RuntimeError:
+      pass
 
   pass
 
