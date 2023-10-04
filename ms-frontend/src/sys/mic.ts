@@ -26,8 +26,6 @@ export const initAudioDevice = async (deviceId: string, onData: (data: Blob) => 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       deviceId,
-      sampleRate: 16000,
-      channelCount: 1,
     }
   });
 

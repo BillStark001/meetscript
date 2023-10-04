@@ -22,7 +22,7 @@ class MeetingHandler:
       name: Optional[str] = None,
       time: Optional[datetime] = None,
       work_duration: float = 0.1, # in seconds
-      dummy_threshold: int = 4,
+      dummy_threshold: int = 2,
   ):
     self.callback = callback
     self.session = session or 'default'
@@ -37,6 +37,8 @@ class MeetingHandler:
     self.dummy_work_count = 0
     self.last_result: Optional[TranscriptionResult] = None
     self.provider_task: Optional[asyncio.Task] = None
+    
+    self.lock = asyncio.Lock()
     
 
   async def init(self):
@@ -76,31 +78,39 @@ class MeetingHandler:
     self.dummy_work_count = 0
     
   async def run_transcription_once(self):
-    if self.dummy_work_count < self.dummy_threshold:
+    res = []
+    do_transcribe = False
+    async with self.lock:
+      if self.dummy_work_count < self.dummy_threshold:
+        self.dummy_work_count += 1
+        do_transcribe = True
+      current_dummy_work_count = self.dummy_work_count
+    
+    if do_transcribe:
       res = await self.worker.transcribe_once()
-      self.dummy_work_count += 1
-    else:
-      res = []
+    
     # in case no data for too long time
     # clear the last result if necessary
-    if self.dummy_work_count >= self.dummy_threshold and self.last_result is not None:
-      self.last_result.partial = False
-      res = [self.last_result]
-      self.last_result = None
-      await self.worker.discard_chunks()
-      
-    for result_raw in res:
-      if not result_raw.partial:
-        # store the result into db
-        await add_record(
-          self.session, 
-          datetime.utcfromtimestamp(result_raw.start / 1000), 
-          result_raw.text,
-          result_raw.lang,
-        )
-      else:
-        self.last_result = result_raw
-      await self.callback(result_raw)
+    
+    async with self.lock:
+      if current_dummy_work_count >= self.dummy_threshold and self.last_result is not None:
+        self.last_result.partial = False
+        res = [self.last_result]
+        self.last_result = None
+        await self.worker.discard_chunks()
+        
+      for result_raw in res:
+        if not result_raw.partial:
+          # store the result into db
+          await add_record(
+            self.session, 
+            datetime.utcfromtimestamp(result_raw.start / 1000), 
+            result_raw.text,
+            result_raw.lang,
+          )
+        else:
+          self.last_result = result_raw
+        await self.callback(result_raw)
       
   def start_providing(self):
     
@@ -122,9 +132,11 @@ class MeetingHandler:
       return True
     
     async def _task_done(*args):
-      print(self.provider_task.exception())
+      e = self.provider_task.exception()
       del self.provider_task
       self.provider_task = None
+      if e is not None and not isinstance(e, asyncio.CancelledError):
+        raise e
     
     self.provider_task = asyncio.create_task(_task())
     self.provider_task.add_done_callback(_task_done)

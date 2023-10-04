@@ -1,5 +1,5 @@
 import { atom, useAtom } from "jotai";
-import { TranscriptionResult } from "../api/meeting";
+import { TranscriptionResult } from "@/api/meeting";
 
 
 const historyTranscriptsAtom = atom<TranscriptionResult[]>([]);

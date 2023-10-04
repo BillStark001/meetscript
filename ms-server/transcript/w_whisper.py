@@ -38,6 +38,7 @@ class WhisperWorker(Worker):
     self.model: Optional[whisper.Whisper] = None
     self.init_params: str = model
     self.queue = asyncio.Queue(maxsize=65536)
+    self.lock = asyncio.Lock()
 
     self.last_element = None
 
@@ -57,10 +58,12 @@ class WhisperWorker(Worker):
   async def enqueue_chunk(self, time: int, sample: bytes):
     if len(sample) % 2 == 1:
       sample = sample[:-1]
-    await self.queue.put((time, sample))
+    async with self.lock:
+      await self.queue.put((time, sample))
     
   async def discard_chunks(self):
-    self.last_element = None
+    async with self.lock:
+      self.last_element = None
 
   async def transcribe_once(self) -> List[TranscriptionResult]:
     '''Transcribe the all enqueued chunks and return the result. 
@@ -68,58 +71,60 @@ class WhisperWorker(Worker):
     '''
     if not self.model:
       return []
-    if self.queue.empty():
-      return []
+    
+    # TODO is this lock really necessary?
+    async with self.lock:
+      if self.queue.empty():
+        return []
 
-    # gather data from queue
-    data = []
-    sample_length = 0
-    last_time = None
-    start_time = None
-    force_complete = False
-    max_sample_count_flag = False
+      # gather data from queue
+      data = []
+      sample_length = 0
+      last_time = None
+      start_time = None
+      force_complete = False
+      max_sample_count_flag = False
 
-    if self.last_element is not None:
-      time, sample = self.last_element
-      if len(sample) % 2 == 1:
-        sample = sample[:-1]
-      start_time = time
-      last_time = time + len(sample) // len(ONE_MS_BYTES)
-      data.append(sample)
-      sample_length += len(sample)
-      self.last_element = None
-
-    while not self.queue.empty():
-      time, sample = self.queue.get_nowait()
-
-      # try filling the gaps
-      if last_time is not None:
-        if last_time < time:
-          if time - last_time > GAP_FILL_MAX:  # leave the data till next iteration
-            force_complete = True
-            self.last_element = time, sample
-            break
-          else:  # fill the gaps
-            fill = ONE_MS_BYTES * (time - last_time)
-            data.append(fill)
-            sample_length += len(fill)
-        if last_time > time:
-          print(f'last_time > time: {last_time}, {time}')
-          time = last_time  # shift the time for now
-
-      if len(sample) % 2 == 1:
-        sample = sample[:-1]
-      if start_time is None:
+      if self.last_element is not None:
+        time, sample = self.last_element
+        if len(sample) % 2 == 1:
+          sample = sample[:-1]
         start_time = time
-      last_time = time + len(sample) // len(ONE_MS_BYTES)
-      data.append(sample)
-      sample_length += len(sample)
-      
-      # prevent for too long recognition
-      if sample_length > MAX_SAMPLE_COUNT:
-        max_sample_count_flag = True
-        break
-      
+        last_time = time + len(sample) // len(ONE_MS_BYTES)
+        data.append(sample)
+        sample_length += len(sample)
+        self.last_element = None
+
+      while not self.queue.empty():
+        time, sample = self.queue.get_nowait()
+
+        # try filling the gaps
+        if last_time is not None:
+          if last_time < time:
+            if time - last_time > GAP_FILL_MAX:  # leave the data till next iteration
+              force_complete = True
+              self.last_element = time, sample
+              break
+            else:  # fill the gaps
+              fill = ONE_MS_BYTES * (time - last_time)
+              data.append(fill)
+              sample_length += len(fill)
+          if last_time > time:
+            print(f'last_time > time: {last_time}, {time}')
+            time = last_time  # shift the time for now
+
+        if len(sample) % 2 == 1:
+          sample = sample[:-1]
+        if start_time is None:
+          start_time = time
+        last_time = time + len(sample) // len(ONE_MS_BYTES)
+        data.append(sample)
+        sample_length += len(sample)
+        
+        # prevent for too long recognition
+        if sample_length > MAX_SAMPLE_COUNT:
+          max_sample_count_flag = True
+          break
       
 
     if not data or start_time is None:
@@ -155,15 +160,16 @@ class WhisperWorker(Worker):
 
     # handle incomplete segments
     if incomplete_segment is not None:
-      
-      assert self.last_element is None, 'incomplete segment and last element should be mutually exclusive'
-      split_start = int(incomplete_segment['start'] * 1000) * len(ONE_MS_BYTES)
-      incomplete_result = convert_segment(incomplete_segment, False, start_time, lang)
-      new_time_start = incomplete_result.start
-      new_sample = data_bytes[split_start:]
-      
-      # store the remaining audio data to the next iteration
-      self.last_element = new_time_start, new_sample
-      result.append(incomplete_result)
+      async with self.lock:
+        
+        assert self.last_element is None, 'incomplete segment and last element should be mutually exclusive'
+        split_start = int(incomplete_segment['start'] * 1000) * len(ONE_MS_BYTES)
+        incomplete_result = convert_segment(incomplete_segment, False, start_time, lang)
+        new_time_start = incomplete_result.start
+        new_sample = data_bytes[split_start:]
+        
+        # store the remaining audio data to the next iteration
+        self.last_element = new_time_start, new_sample
+        result.append(incomplete_result)
       
     return result

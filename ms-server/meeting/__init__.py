@@ -12,7 +12,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from fastapi import Depends, HTTPException, WebSocket
-from starlette.websockets import WebSocketState
+from starlette.websockets import WebSocketState, WebSocketDisconnect
 
 from base import app
 from user.model import User
@@ -32,7 +32,7 @@ async def _send_transcription(data: TranscriptionResult):
   dead_sockets = []
   crs = []
   for s in _active_sockets:
-    if s.application_state == WebSocketState.DISCONNECTED:
+    if s.client_state == WebSocketState.DISCONNECTED:
       dead_sockets.append(s)
       continue
     crs.append(s.send_json(dataclasses.asdict(data)))
@@ -170,7 +170,8 @@ async def provide(websocket: WebSocket, token: str, format: str):
       audio_data = audio_handler(audio_data_raw)
       # sr=16000, d=16bit
       await _handler.enqueue_audio_data(timestamp_millis, audio_data)
-
+  except WebSocketDisconnect:
+    pass
   finally:
     if _handler:
       _handler.del_provider(provider_addr)
