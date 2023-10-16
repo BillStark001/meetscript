@@ -86,13 +86,13 @@ class MeetingHandler:
         do_transcribe = True
       current_dummy_work_count = self.dummy_work_count
     
-    if do_transcribe:
-      res = await self.worker.transcribe_once()
-    
-    # in case no data for too long time
-    # clear the last result if necessary
-    
-    async with self.lock:
+      if do_transcribe:
+        res = await self.worker.transcribe_once()
+      
+      # in case no data for too long time
+      # clear the last result if necessary
+      
+      #async with self.lock:
       if current_dummy_work_count >= self.dummy_threshold and self.last_result is not None:
         self.last_result.partial = False
         res = [self.last_result]

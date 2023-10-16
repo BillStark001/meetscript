@@ -127,40 +127,40 @@ class WhisperWorker(Worker):
           break
       
 
-    if not data or start_time is None:
-      return []
+      if not data or start_time is None:
+        return []
 
-    data_bytes = b''.join(data)
-    data_array = np.frombuffer(data_bytes, dtype=np.int16) \
-        .flatten().astype(np.float32) / 32768.0
+      data_bytes = b''.join(data)
+      data_array = np.frombuffer(data_bytes, dtype=np.int16) \
+          .flatten().astype(np.float32) / 32768.0
 
-    # run the model
-    raw_result: List[Dict[str, Any]] = await _run_async(
-        lambda: self.model.transcribe(
-            data_array, fp16=torch.cuda.is_available()
-        ))
-    segments = raw_result['segments']
-    lang = raw_result['language']
-    
+      # run the model
+      raw_result: List[Dict[str, Any]] = await _run_async(
+          lambda: self.model.transcribe(
+              data_array, fp16=torch.cuda.is_available()
+          ))
+      segments = raw_result['segments']
+      lang = raw_result['language']
+      
 
-    incomplete_segment = None if force_complete or len(
-        segments) == 0 else segments[-1]
-    # force complete if necessary
-    if incomplete_segment is not None and max_sample_count_flag and \
-      incomplete_segment['start'] == 0:
-      incomplete_segment = None 
-    
-    complete_segments = segments if incomplete_segment is None else segments[:-1]
+      incomplete_segment = None if force_complete or len(
+          segments) == 0 else segments[-1]
+      # force complete if necessary
+      if incomplete_segment is not None and max_sample_count_flag and \
+        incomplete_segment['start'] == 0:
+        incomplete_segment = None 
+      
+      complete_segments = segments if incomplete_segment is None else segments[:-1]
 
-    result = []
+      result = []
 
-    # handle complete segments
-    result.extend(convert_segment(s, True, start_time, lang)
-                  for s in complete_segments if s['no_speech_prob'] < NO_SPEECH_PROB_THRESHOLD)
+      # handle complete segments
+      result.extend(convert_segment(s, True, start_time, lang)
+                    for s in complete_segments if s['no_speech_prob'] < NO_SPEECH_PROB_THRESHOLD)
 
-    # handle incomplete segments
-    if incomplete_segment is not None:
-      async with self.lock:
+      # handle incomplete segments
+      if incomplete_segment is not None:
+      # async with self.lock:
         
         assert self.last_element is None, 'incomplete segment and last element should be mutually exclusive'
         split_start = int(incomplete_segment['start'] * 1000) * len(ONE_MS_BYTES)
@@ -172,4 +172,4 @@ class WhisperWorker(Worker):
         self.last_element = new_time_start, new_sample
         result.append(incomplete_result)
       
-    return result
+      return result

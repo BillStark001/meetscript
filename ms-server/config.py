@@ -6,11 +6,9 @@ from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from datetime import timedelta
 from typing import Dict, Union, List
 
-
 from utils.data import parse_timedelta, create_timedelta_str
 
-load_dotenv()
-
+__all__ = ['AppConfigModel', 'AppConfig', 'EnvConfig']
 
 
 
@@ -32,6 +30,20 @@ class AppConfigModel(BaseModel):
   @classmethod
   def validate_timedelta(cls, delta: str):
     return parse_timedelta(delta)
+
+
+# environment variables
+
+load_dotenv()
+
+mount_static_str = os.environ.get('MOUNT_STATIC', '')
+mount_static = bool(mount_static_str and \
+  mount_static_str.strip().lower() not in {'0', 'false', 'none', 'null'})
+
+class EnvConfig:
+  mount_static = mount_static
+
+# app config
 
 _CONFIG_PATH = './config.yaml'
 

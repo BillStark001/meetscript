@@ -6,8 +6,8 @@ import TestApp from './TestApp';
 export const AppLayout = ({ children }: React.PropsWithChildren<object>) => {
   return (
     <>
-      <Box bg="gray.100" minHeight="100vh">
-        <Box bg="blue.500" p={4}>
+      <Box minHeight="100vh">
+        <Box bg='blue.500' p={4}>
           <Container maxW="container.xl">
             test header
           </Container>

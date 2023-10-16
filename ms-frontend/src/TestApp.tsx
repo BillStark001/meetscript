@@ -1,23 +1,16 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { atom, useAtom } from 'jotai';
 import { AudioDeviceScheme, getAudioDevices } from './sys/mic';
 import { MeetingSocketHandler, requireWsToken, useTranscriptorWs } from './api/meeting';
 import { fetchApiRoot } from './api';
-import { useTranscript } from './components/TranscriptView';
+import { TranscriptView, useTranscript } from './components/TranscriptView';
 import { Button, Select, Textarea } from '@chakra-ui/react';
 
 
 const audioAtom = atom<AudioDeviceScheme[]>([]);
 
-const getTime = (d: Date) => {
-  const hours = d.getHours().toString().padStart(2, '0');
-  const minutes = d.getMinutes().toString().padStart(2, '0');
-  const seconds = d.getSeconds().toString().padStart(2, '0');
 
-  const timeString = `${hours}:${minutes}:${seconds}`;
-  return timeString;
-}
 
 const TestApp = () => {
   const [count, setCount] = useState(0);
@@ -95,12 +88,7 @@ const TestApp = () => {
           }}>{t('disconnect')}</Button>
         </p>
       </div>
-      <div className="card">
-        { history.map(x => <Fragment key={`${x.start}-${x.end}-${x.lang.substring(8)}`}>
-          <span>{x.lang} / {getTime(new Date(x.start))} / {x.text}</span><br/>
-        </Fragment>) }
-        { incomplete && <span>{incomplete.text}</span> }
-      </div>
+      <TranscriptView history={history} incomplete={incomplete} />
     </>
   )
 }
