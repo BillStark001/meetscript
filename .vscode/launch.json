@@ -5,12 +5,30 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Module",
+      "name": "Python: Current File",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/ms-server",
+      "justMyCode": false,
+    },
+    {
+      "name": "Python: Backend",
       "type": "python",
       "request": "launch",
       "module": "uvicorn",
-      "args": ["main:app", "--port", "8000", "--reload", "--app-dir", "../ms-server", "--reload-dir", "../ms-server"],
-      "cwd":"${workspaceFolder}/runtime"
+      "args": [
+        "main:app",
+        "--port",
+        "8000",
+        "--reload",
+        "--app-dir",
+        "../ms-server",
+        "--reload-dir",
+        "../ms-server"
+      ],
+      "cwd": "${workspaceFolder}/runtime"
     }
   ]
 }

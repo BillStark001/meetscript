@@ -30,7 +30,7 @@ def load_audio(file: str, sr: int = 16000):
   # return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
 
 async def test():
-  audio = load_audio(os.path.expanduser('~/micro-machines.wav'))
+  audio = load_audio(os.path.expanduser('~/OSR_us_000_0010_8k.wav'))
   L = 1000
   S = []
   last_time = 0
