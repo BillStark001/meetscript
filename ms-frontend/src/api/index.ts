@@ -1,3 +1,6 @@
+
+
+
 export const fetchApiRoot = async () => {
   try {
     const res = await fetch('/api');

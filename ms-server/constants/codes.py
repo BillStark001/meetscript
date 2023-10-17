@@ -1,6 +1,8 @@
+from typing import Tuple
+
 class Codes:
   
-  DONE: int = 0, 'Operation Successful.', 200
+  DONE: int = 0, 'Done.', 200
   
   ERR_INVALID_USERNAME = 10
   ERR_INVALID_PASSWORD = 11
@@ -35,13 +37,13 @@ def _gen_desc():
     
 _descs = _gen_desc()
 
-def getDescription(code: int) -> tuple:
-  return _descs.get(code, (code, 'Unknown Status.', 200))
+def getDescription(code: int) -> Tuple[str, str, int]:
+  return _descs.get(code, (f'UNKNOWN_${code}', 'Unknown Status.', 200))
 
 def getDescriptionWs(code: int) -> dict:
   return dict(code=4000 + code, reason=getDescription(code)[1])
 
 def getDescriptionHttp(code: int) -> dict:
   _, detail, status_code = getDescription(code)
-  return dict(status_code=status_code, detail=detail)
+  return dict(status_code=status_code, code=code, info=detail)
     

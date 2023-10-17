@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from fastapi import Depends, HTTPException, WebSocket
 from starlette.websockets import WebSocketState, WebSocketDisconnect
 
-from base import app
+from base import app, BaseResponseModel, TokenResponseModel
 from user.model import User
 from user.auth import CurrentUser, create_jwt_token, get_current_user_ws
 from constants import Token, Codes, getDescriptionHttp, getDescriptionWs
@@ -28,6 +28,7 @@ from transcript.worker import TranscriptionResult
 _handler: Optional[MeetingHandler] = None
 _active_sockets: Set[WebSocket] = set()
 
+
 async def _send_transcription(data: TranscriptionResult):
   dead_sockets = []
   crs = []
@@ -40,7 +41,7 @@ async def _send_transcription(data: TranscriptionResult):
   for s in dead_sockets:
     if s in _active_sockets:
       _active_sockets.remove(s)
-    
+
 
 class InitParams(BaseModel):
   session: Optional[str] = None
@@ -52,11 +53,11 @@ _emst = getDescriptionHttp(Codes.ERR_MEETING_STARTED)
 _emns = getDescriptionHttp(Codes.ERR_MEETING_NOT_STARTED)
 
 
-@app.post('/api/meet/init')
+@app.post('/api/meet/init', response_model_exclude_none=True)
 async def init(
     form_data: InitParams,
     user: User = Depends(CurrentUser(Token.Access.Meeting.InitOrClose))
-):
+) -> BaseResponseModel:
   global _handler
   if _handler is not None:
     raise HTTPException(**_emst)
@@ -68,36 +69,35 @@ async def init(
   )
   await _handler.init()
   _handler.start_providing()
-  return {'detail': 'Done.', 'user': user.email if user else None}
+  return BaseResponseModel(detail={'user': user.email if user else None})
 
 
-@app.post('/api/meet/close')
+@app.post('/api/meet/close', response_model_exclude_none=True)
 async def close(
     user: User = Depends(CurrentUser(Token.Access.Meeting.InitOrClose))
-):
+) -> BaseResponseModel:
   global _handler
   if _handler is None:
     raise HTTPException(**_emns)
   _handler.stop_providing()
   await _handler.close()
   _handler = None
-  return {'detail': 'Done.', 'user': user.email if user else None}
+  return BaseResponseModel(detail={'user': user.email if user else None})
 
 
-@app.get('/api/meet/ws_request')
+@app.get('/api/meet/ws_request', response_model_exclude_none=True)
 async def request_websocket(
     user: User = Depends(CurrentUser(Token.Access.Meeting.InitOrClose)),
     provider: bool = False,
-):
-  return {
-      'detail': 'Done.',
-      'user': user.email if user else None,
-      'access_token': create_jwt_token(
+) -> TokenResponseModel:
+  return TokenResponseModel(
+      detail={'user': user.email if user else None},
+      access_token=create_jwt_token(
           user,
           (Token.Access.Meeting.Provide if provider else Token.Access.Meeting.Consume).value,
           AppConfig.AccessTokenExpires
       )
-  }
+  )
 
 
 _emnsw = getDescriptionWs(Codes.ERR_MEETING_NOT_STARTED)
@@ -110,17 +110,21 @@ def _j(x: bytes):
   except:
     return None
 
+
 def float32_to_int16(audio_data_raw: bytes) -> bytes:
   audio_data_arr = np.frombuffer(audio_data_raw, dtype=np.float32) * 0x8000
   audio_data_arr[audio_data_arr > 0x7fff] = 0x7fff
   audio_data = audio_data_arr.astype(np.int16).tobytes()
   return audio_data
 
+
 def int16_endian_cvrt(big_endian_array: bytes, le2be: bool = False) -> bytes:
-  big_endian_array = np.frombuffer(big_endian_array, dtype=np.dtype('<f2' if le2be else '>f2'))
+  big_endian_array = np.frombuffer(
+      big_endian_array, dtype=np.dtype('<f2' if le2be else '>f2'))
   little_endian_array = big_endian_array.astype('>f2' if le2be else '<f2')
   little_endian_buffer = little_endian_array.tobytes()
   return little_endian_buffer
+
 
 @app.websocket('/ws/meet/provide')
 async def provide(websocket: WebSocket, token: str, format: str):
@@ -140,16 +144,16 @@ async def provide(websocket: WebSocket, token: str, format: str):
   await websocket.send_json({'code': 0, 'detail': 'Connection Accepted.'})
   provider_addr = (websocket.client.host, websocket.client.port)
   _active_sockets.add(websocket)
-  
+
   # prepare audio handler
   audio_handler: Callable[[bytes], bytes] = lambda x: x
   if format == 'int16be' and sys.byteorder != 'big':
     audio_handler = int16_endian_cvrt
   elif (format == 'int16' or format == 'int16le') and sys.byteorder == 'big':
-    audio_handler = lambda x: int16_endian_cvrt(x, True)
+    def audio_handler(x): return int16_endian_cvrt(x, True)
   elif format == 'float32':
     audio_handler = float32_to_int16
-  
+
   try:
     while True:
       user_input = await websocket.receive_bytes()
@@ -161,12 +165,12 @@ async def provide(websocket: WebSocket, token: str, format: str):
       # else treat it like formed data
       if not _handler:
         break
-      if not _handler.provider_active(provider_addr): 
+      if not _handler.provider_active(provider_addr):
         continue  # discard since the handler is receiving somewhere else
 
       timestamp_millis = struct.unpack('>Q', user_input[:8])[0]
       # time_obj = datetime.utcfromtimestamp(timestamp_millis / 1000)
-      audio_data_raw = user_input[8:]  
+      audio_data_raw = user_input[8:]
       audio_data = audio_handler(audio_data_raw)
       # sr=16000, d=16bit
       await _handler.enqueue_audio_data(timestamp_millis, audio_data)

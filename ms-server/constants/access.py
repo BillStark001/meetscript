@@ -69,6 +69,7 @@ class Token(str, Enum):
       Register = _groups(UserGroup.Guest, UserGroup.Admin, UserGroup.Root)
       Login = _groups(UserGroup.Guest)
       ChangeInfo = _group(UserGroup.User)
+      ChangeCriticalInfo = _group(UserGroup.User)
 
 
 def _gen_access(e: Enum, prefix: str = '', group_map: Optional[Dict[str, Set[str]]] = None):

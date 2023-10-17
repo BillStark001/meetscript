@@ -3,11 +3,13 @@ import peewee as pw
 import peewee_async as pwa
 from datetime import datetime
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import user.format as f
 from constants import Codes, UserGroup
 from utils.sqlite import AsyncSqliteDatabase
+
+import uuid
 
 
 # database
@@ -23,6 +25,20 @@ def initialize_db():
     db.connect()
     db.create_tables([User], safe=True)
     db.close()
+    # create root user
+    try:
+      User.get(User.email == '__root__')
+    except User.DoesNotExist:
+      pw = str(uuid.uuid1())
+      User.create(
+          email='__root__',
+          username='root',
+          pw_hash=f.encode_password(pw),
+          pw_update=datetime.utcnow(),
+          group=UserGroup.Root
+      )
+      with open('./root_pwd.txt', 'w') as f1:
+        f1.write(pw)
 
 
 class User(pw.Model):
@@ -37,21 +53,21 @@ class User(pw.Model):
   class Meta:
     database = db
 
-  def set_username(self, username: str, save=True):
+  async def set_username(self, username: str, save=True):
     if not f.is_valid_username(username):
       return Codes.ERR_INVALID_USERNAME
     self.username = username
     if save:
-      self.save()
+      await objects.update(self)
     return Codes.DONE
 
-  def set_password(self, password: str, save=True):
+  async def set_password(self, password: str, save=True):
     if not f.is_valid_password(password):
       return Codes.ERR_INVALID_PASSWORD
     self.pw_hash = f.encode_password(password)
     self.pw_update = datetime.utcnow()
     if save:
-      self.save()
+      await objects.update(self)
     return Codes.DONE
 
 
@@ -84,7 +100,7 @@ async def create_user(email: str, username: str, password: str, group: str = Use
     return Codes.ERR_EXISTENT_EMAIL
 
 
-async def authenticate_user(email: str, password: str):
+async def authenticate_user(email: str, password: str) -> Tuple[int, Optional[User]]:
   try:
     user = await objects.get(User, User.email == email)
     if f.verify_password(password, user.pw_hash):
