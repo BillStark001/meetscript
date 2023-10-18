@@ -1,5 +1,3 @@
-import { convertPcm } from "./audio";
-
 export type AudioDeviceScheme = {
   value: string;
   text: string;
@@ -34,7 +32,7 @@ export const initAudioDevice = async (deviceId: string, onData: (data: Blob) => 
   });
   const input = context.createMediaStreamSource(stream);
   const recorder = context.createScriptProcessor(8192, 1, 1);
-  
+
   let startTime = 0;
   const start = () => {
     startTime = Date.now();
@@ -47,23 +45,28 @@ export const initAudioDevice = async (deviceId: string, onData: (data: Blob) => 
   };
 
   recorder.onaudioprocess = (e) => {
-    const channel = e.inputBuffer.getChannelData(0);
-    const { data, maxRange } = convertPcm(channel, true);
+    let maxRange = 0;
+    const data = e.inputBuffer.getChannelData(0);
+    for (var i = 1; i < data.length; i++) {
+      if (Math.abs(data[i]) > maxRange) {
+        maxRange = data[i];
+      }
+    }
 
     // append current timestamp
     const uint8Array = new Uint8Array(8);
     const dataView = new DataView(uint8Array.buffer);
     dataView.setBigUint64(0, BigInt(startTime + e.playbackTime * 1000), false);
 
-    if (maxRange > 0.003){
+    if (maxRange > 0.003) {
       onData(new Blob([dataView, data]));
     }
   };
 
   return {
-    start, 
+    start,
     stop,
-    context, 
+    context,
     input,
     recorder,
   };
