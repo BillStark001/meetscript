@@ -2,15 +2,16 @@
 
 site_name="ms"
 server_name="_"
+cert_path=""
 
-if [ -n "$1" ]; then
-    site_name="$1"
-fi
-
-if [ -n "$2" ]; then
-    server_name="$2"
-fi
-
+while getopts "s:v:c:" opt; do
+  case $opt in
+    s) site_name="$OPTARG" ;;
+    v) server_name="$OPTARG" ;;
+    c) cert_path="$OPTARG" ;;
+    \?) echo "Invalid Argument: -$OPTARG" >&2; exit 1 ;;
+  esac
+done
 
 # 1. detect nginx
 nginx_installed=false
@@ -35,10 +36,34 @@ fi
 # 3. generate nginx site config
 ms_static_path=$(readlink -f "$ms_frontend_path/dist")
 ms_index_path="$ms_static_path/index.html"
-nginx_config="server {
-    listen 80;
+
+# handler certificate
+
+listen_phrase="listen 80;
+    root $ms_static_path;
+    server_name $server_name;"
+
+if [ -n "$cert_path" ]; then
+    cert_path_full=$(readlink -f "$cert_path")
+    listen_phrase="listen 80;
+    server_name $server_name;
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
     root $ms_static_path;
     server_name $server_name;
+
+    ssl_certificate $cert_path_full.crt;
+    ssl_certificate_key $cert_path_full.key;"
+fi
+
+nginx_config="server {
+    $listen_phrase
 
     location /ms {
         alias $ms_index_path;
@@ -75,7 +100,7 @@ fi
 
 sudo ln -s "$nginx_config_file_path" "$sites_enabled_link"
 
-nginx_service_command="sudo systemctl restart nginx"
+nginx_service_command="sudo nginx -s reload"
 if $nginx_service_command; then
     echo "Nginx service restarted successfully."
 else
