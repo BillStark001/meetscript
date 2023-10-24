@@ -7,40 +7,21 @@ from subprocess import CalledProcessError, run
 
 from transcript.w_whisper import WhisperWorker
 
-def load_audio(file: str, sr: int = 16000):
-  # fmt: 0ff
-  cmd = [
-      "ffmpeg",
-      "-nostdin",
-      "-threads", "0",
-      "-i", file,
-      "-f", "s16le",
-      "-ac", "1",
-      "-acodec", "pcm_s16le",
-      "-ar", str(sr),
-      "-"
-  ]
-  # fmt: on
-  try:
-    out = run(cmd, capture_output=True, check=True).stdout
-  except CalledProcessError as e:
-    raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
-
-  return out
-  # return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
+from whisper.audio import load_audio
 
 async def test():
   audio = load_audio(os.path.expanduser('~/OSR_us_000_0010_8k.wav'))
   L = 1000
   S = []
   last_time = 0
-  while len(audio) > L * 32:
-    S.append((last_time, audio[:L * 32]))
+  while audio.size > L * 16:
+    S.append((last_time, audio[:L * 16]))
     last_time += L
-    audio = audio[L * 32:]
-  S.append((last_time, audio[:L * 32]))
+    audio = audio[L * 16:]
+  if audio.size:
+    S.append((last_time, audio[:L * 16]))
   
-  worker = WhisperWorker('medium')
+  worker = WhisperWorker('small')
   await worker.init_model()
   
   print(f'CUDA is available: {torch.cuda.is_available()}')
@@ -51,8 +32,8 @@ async def test():
       break
     Sh = S[:4]
     S = S[4:] if len(S) > 4 else []
-    for t, s in Sh:
-      await worker.enqueue_chunk(t, s)
+    for timestamp, sample in Sh:
+      await worker.enqueue_chunk(timestamp, sample)
     tstart = time.time()
     res = await worker.transcribe_once()
     tend = time.time() - tstart

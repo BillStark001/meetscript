@@ -1,5 +1,7 @@
 import asyncio
 from typing import Optional, Callable
+from numpy.typing import NDArray
+import numpy as np
 
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -12,6 +14,7 @@ from transcript.w_whisper import WhisperWorker
 
 from meeting.model import initialize_db, add_record
 
+DEBUG_MODE = False
 
 class MeetingHandler:
 
@@ -21,8 +24,8 @@ class MeetingHandler:
       session: str = 'default',
       name: Optional[str] = None,
       time: Optional[datetime] = None,
-      work_duration: float = 0.1, # in seconds
-      dummy_threshold: int = 2,
+      work_duration: float = 0.7, # in seconds
+      dummy_threshold: int = 4,
   ):
     self.callback = callback
     self.session = session or 'default'
@@ -43,7 +46,7 @@ class MeetingHandler:
 
   async def init(self):
     if self.worker is None:
-      self.worker = WhisperWorker('medium')
+      self.worker = WhisperWorker('small')
     initialize_db(self.session)
     await self.worker.init_model()
     self.dummy_work_count = 0
@@ -73,14 +76,16 @@ class MeetingHandler:
       return True
     return self.provider == provider
 
-  async def enqueue_audio_data(self, time: int, data: bytes):
-    await self.worker.enqueue_chunk(time, data)
-    self.dummy_work_count = 0
+  async def enqueue_audio_data(self, time: int, data: NDArray[np.float32]):
+    async with self.lock:
+      await self.worker.enqueue_chunk(time, data)
+      self.dummy_work_count = 0
     
   async def run_transcription_once(self):
     res = []
     do_transcribe = False
     async with self.lock:
+      
       if self.dummy_work_count < self.dummy_threshold:
         self.dummy_work_count += 1
         do_transcribe = True
@@ -92,12 +97,21 @@ class MeetingHandler:
       # in case no data for too long time
       # clear the last result if necessary
       
-      #async with self.lock:
+      flag1 = False
       if current_dummy_work_count >= self.dummy_threshold and self.last_result is not None:
+        flag1 = True
         self.last_result.partial = False
-        res = [self.last_result]
+        res = [self.last_result] + res
         self.last_result = None
         await self.worker.discard_chunks()
+        
+      if DEBUG_MODE and res:
+        print('W', flag1, self.worker.last_element[0] if self.worker.last_element else '-')
+        if self.last_result:
+          print('L', self.last_result)
+        for _ in res:
+          print(' ', _)
+        print()
         
       for result_raw in res:
         if not result_raw.partial:
@@ -127,9 +141,12 @@ class MeetingHandler:
           # in_transcrition = False
           await asyncio.sleep(self.work_duration)
       except asyncio.CancelledError as e:
+        print('Task Cancelled.')
+        return True, e
+      except e:
         print(e)
-        pass
-      return True
+        return False, e
+      return True, None
     
     async def _task_done(*args):
       e = self.provider_task.exception()

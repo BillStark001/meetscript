@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Union
 
 import whisper
 import torch
@@ -86,7 +86,7 @@ class WhisperWorker(Worker):
     self.queue = asyncio.Queue(maxsize=65536)
     self.lock = asyncio.Lock()
 
-    self.last_element: Optional[Tuple[int, NDArray]] = None
+    self.last_element: Optional[Tuple[int, NDArray[np.float32]]] = None
 
   async def init_model(self):
     self.model = await _run_async(lambda: whisper.load_model(self.init_params))
@@ -101,16 +101,16 @@ class WhisperWorker(Worker):
   async def close_model(self):
     await _run_async(self.close_model_sync)
 
-  async def enqueue_chunk(self, time: int, sample: bytes):
-    if isinstance(sample, bytes):
-      if len(sample) % 2 == 1:
-        sample = sample[:-1]
-      sample_array = np.frombuffer(sample, dtype=np.int16) \
-          .flatten().astype(np.float32) / 32768.0
-    else:
-      sample_array = sample
+  async def enqueue_chunk(self, time: int, sample: NDArray[np.float32]):
+    # pad zero
+    remainder = sample.size % 16
+    if remainder != 0:
+      num_zeros_to_add = 16 - remainder
+      zeros_to_add = np.zeros(num_zeros_to_add, dtype=sample.dtype)
+      sample = np.concatenate((sample, zeros_to_add))  
+    
     async with self.lock:
-      await self.queue.put((time, sample_array))
+      await self.queue.put((time, sample))
 
   async def discard_chunks(self):
     async with self.lock:
@@ -129,7 +129,9 @@ class WhisperWorker(Worker):
         return []
 
       # gather data from queue
-      data: List[NDArray] = []
+      data: List[NDArray[np.float32]] = []
+      data_overflow: List[Tuple[int, NDArray[np.float32]]] = []
+      
       sample_length = 0
       last_time = None
       start_time = None
@@ -145,11 +147,12 @@ class WhisperWorker(Worker):
         self.last_element = None
 
       while not self.queue.empty():
-        _e: Tuple[int, NDArray] = self.queue.get_nowait()
+        _e: Tuple[int, NDArray[np.float32]] = self.queue.get_nowait()
         time, sample = _e
 
         # try filling the gaps
         if last_time is not None:
+          
           if last_time < time:
             if time - last_time > GAP_FILL_MAX:  # leave the data till next iteration
               force_complete = True
@@ -157,12 +160,23 @@ class WhisperWorker(Worker):
               break
             else:  # fill the gaps
               fill = np.zeros(
-                  ((time - last_time) * ONE_MS_SAMPLE,), dtype=np.float16)
+                  ((time - last_time) * ONE_MS_SAMPLE,), dtype=np.float32)
               data.append(fill)
               sample_length += len(fill)
+              
           if last_time > time:
+            # separate array
+            delta_time = last_time - time
+            delta_smpl_length = delta_time * ONE_MS_SAMPLE
+            delta_array = sample[:delta_smpl_length]
+            
+            sample = sample[delta_smpl_length:] if delta_smpl_length < sample.size else None
+            data_overflow.append((time, delta_array))
             print(f'last_time > time: {last_time}, {time}')
-            time = last_time  # shift the time for now
+            time = last_time # shift the time
+            
+        if sample is None:
+          continue
 
         if start_time is None:
           start_time = time
@@ -178,10 +192,12 @@ class WhisperWorker(Worker):
       if not data or start_time is None:
         return []
 
-      # data_bytes = b''.join(data)
-      # data_array = np.frombuffer(data_bytes, dtype=np.int16) \
-      #     .flatten().astype(np.float32) / 32768.0
+      # combine data
       data_array = np.concatenate(data, axis=0)
+      while start_time != None and data_overflow:
+        timestamp, delta_array = data_overflow.pop()
+        add_pos = (timestamp - start_time) * ONE_MS_SAMPLE
+        data_array[add_pos: add_pos+delta_array.size] += delta_array
 
       results, incomplete_result, sample_retain = await transcribe_and_segment(
           self.model,
@@ -190,7 +206,7 @@ class WhisperWorker(Worker):
           force_complete
       )
 
-      if sample_retain > 0:
+      if sample_retain < data_array.size:
         self.last_element = (
             start_time + sample_retain // ONE_MS_SAMPLE,
             data_array[sample_retain:]
