@@ -107,8 +107,8 @@ class WhisperWorker(Worker):
     if remainder != 0:
       num_zeros_to_add = 16 - remainder
       zeros_to_add = np.zeros(num_zeros_to_add, dtype=sample.dtype)
-      sample = np.concatenate((sample, zeros_to_add))  
-    
+      sample = np.concatenate((sample, zeros_to_add))
+
     async with self.lock:
       await self.queue.put((time, sample))
 
@@ -131,7 +131,7 @@ class WhisperWorker(Worker):
       # gather data from queue
       data: List[NDArray[np.float32]] = []
       data_overflow: List[Tuple[int, NDArray[np.float32]]] = []
-      
+
       sample_length = 0
       last_time = None
       start_time = None
@@ -152,7 +152,7 @@ class WhisperWorker(Worker):
 
         # try filling the gaps
         if last_time is not None:
-          
+
           if last_time < time:
             if time - last_time > GAP_FILL_MAX:  # leave the data till next iteration
               force_complete = True
@@ -163,18 +163,18 @@ class WhisperWorker(Worker):
                   ((time - last_time) * ONE_MS_SAMPLE,), dtype=np.float32)
               data.append(fill)
               sample_length += len(fill)
-              
+
           if last_time > time:
             # separate array
             delta_time = last_time - time
             delta_smpl_length = delta_time * ONE_MS_SAMPLE
             delta_array = sample[:delta_smpl_length]
-            
+
             sample = sample[delta_smpl_length:] if delta_smpl_length < sample.size else None
             data_overflow.append((time, delta_array))
             print(f'last_time > time: {last_time}, {time}')
-            time = last_time # shift the time
-            
+            time = last_time  # shift the time
+
         if sample is None:
           continue
 

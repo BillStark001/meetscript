@@ -7,9 +7,9 @@ _TIME_REGEX = re.compile(
 )
 
 _TIME_DELTA_DICT = {
-  'mic': lambda d: d.microseconds or None,
-  's': lambda d: d.seconds or None,
-  'd': lambda d: d.days or None
+    'mic': lambda d: d.microseconds or None,
+    's': lambda d: d.seconds or None,
+    'd': lambda d: d.days or None
 }
 
 

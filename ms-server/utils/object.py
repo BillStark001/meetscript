@@ -93,5 +93,5 @@ class EventBasedWebSocketHandler(ABC):
 
   async def close(self, code: int = 1000, reason: Optional[str] = None):
     if self.socket.application_state != WebSocketState.DISCONNECTED and \
-      self.socket.client_state != WebSocketState.DISCONNECTED:
+            self.socket.client_state != WebSocketState.DISCONNECTED:
       await self.socket.close(code, reason)

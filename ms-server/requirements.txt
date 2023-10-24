@@ -5,6 +5,7 @@ websockets
 peewee
 peewee-async
 aiosqlite
+aiohttp
 python-dotenv
 pydantic
 pydantic-yaml
