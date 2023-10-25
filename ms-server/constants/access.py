@@ -60,6 +60,7 @@ class Token(str, Enum):
     class Meeting(str, Enum):
 
       InitOrClose = _group(UserGroup.Host)
+      Data = _group(UserGroup.User)
       Provide = _group(UserGroup.User)
       Consume = _group(UserGroup.Guest)
 

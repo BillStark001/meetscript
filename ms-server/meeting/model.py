@@ -88,13 +88,13 @@ async def fetch_records(
 
 @dataclass
 class TranslationResult:
-  time: int = 0
+  start: int = 0
   text: str = ''
   lang: str = ''
   translated: str = ''
 
   def __str__(self) -> str:
-    return f'[{self.lang},{format_time(datetime.utcfromtimestamp(self.time / 1000))}] {self.text} -> {self.translated}'
+    return f'[{self.lang},{format_time(datetime.utcfromtimestamp(self.start / 1000))}] {self.text} -> {self.translated}'
 
 
 async def update_translations(

@@ -74,9 +74,10 @@ async def get_current_user(
   user, right_type = await _v(token_type)
 
   # if type is none, right_type is guaranteed to be true
-  if token_type is not None and \
-          token_type != Token.Refresh and (user is None or not right_type):
-    # try to get the refresh token
+  if (user is None or not right_type) and \
+          token_type is not None and token_type != Token.Refresh:
+    # access token is needed but not found
+    # try to get the refresh token first
     user_refresh, right_type = await _v(Token.Refresh.value)
     flag = True
 
@@ -100,6 +101,9 @@ async def get_current_user(
           httponly=True
       )
       right_type = True
+    else:
+      # there is no valid user identity
+      user = None
 
   # if hard mode, raise error or guest user
   # else return user if available
@@ -161,4 +165,5 @@ class CurrentUser:
       token: str = Depends(OAuth2PasswordBearer(
           tokenUrl="token", auto_error=False)),
   ):
-    return await get_current_user(request, response, token, self.token_type, self.hard)
+    u = await get_current_user(request, response, token, self.token_type, self.hard)
+    return u

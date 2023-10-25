@@ -45,5 +45,5 @@ def getDescriptionWs(code: int) -> dict:
 
 def getDescriptionHttp(code: int) -> dict:
   _, detail, status_code = getDescription(code)
-  return dict(status_code=status_code, code=code, info=detail)
+  return dict(status_code=status_code, detail=detail)
     

@@ -2,7 +2,6 @@ from typing import Any, Optional, Set, Callable, Tuple
 from numpy.typing import NDArray
 import dataclasses
 
-import sys
 import numpy as np
 import asyncio
 import struct
@@ -11,7 +10,6 @@ import json
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState, WebSocketDisconnect
 
-from base import app
 from user import User
 from user.auth import get_current_user_ws
 from constants import Token, Codes, getDescriptionWs
@@ -37,18 +35,19 @@ async def send_transcription(
   data_tc: Optional[TranscriptionResult],
   data_tl: Optional[TranslationResult],
 ):
-  if data_tc is None:
-    if data_tl is not None:
-      print(data_tl)
+  if not data_tc and not data_tl:
     return
-  
   dead_sockets = []
   crs = []
   for s in _active_sockets:
     if s.socket.client_state == WebSocketState.DISCONNECTED:
       dead_sockets.append(s)
       continue
-    crs.append(s.send(dataclasses.asdict(data_tc)))
+    dict_to_send = {
+      **(dataclasses.asdict(data_tc) if data_tc else {}),
+      **(dataclasses.asdict(data_tl) if data_tl else {}),
+    }
+    crs.append(s.send(dataclasses.asdict(dict_to_send)))
   await asyncio.gather(*crs)
   for s in dead_sockets:
     if s in _active_sockets:
@@ -183,15 +182,4 @@ class ProviderHandler(EventBasedWebSocketHandler):
     # sr=16000, d=16bit
     await _handler.enqueue_audio_data(timestamp_millis, audio_data)
   
-
-@app.websocket('/ws/meet/provide')
-async def provide(websocket: WebSocket, token: str, format: str):
-  h = ProviderHandler(websocket, token, format)
-  await h.work()
-
-@app.websocket('/ws/meet/consume')
-async def consume(websocket: WebSocket, token: str):
-  h = ConsumerHandler(websocket, token)
-  await h.work()
-
 

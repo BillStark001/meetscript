@@ -4,7 +4,7 @@ from datetime import datetime
 from datetime import datetime
 from pydantic import BaseModel
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, WebSocket
 
 from base import app, BaseResponseModel, TokenResponseModel
 from user.model import User
@@ -14,7 +14,7 @@ from config import AppConfig
 
 from meeting.model import initialize_db
 from meeting.handler import MeetingHandler
-from meeting.ws import send_transcription, get_handler, set_handler
+from meeting.ws import send_transcription, get_handler, set_handler, ProviderHandler, ConsumerHandler
 
 
 
@@ -60,10 +60,11 @@ async def close(
   return BaseResponseModel(detail={'user': user.email if user else None})
 
 
-@app.get('/api/meet/ws_request', response_model_exclude_none=True)
-async def request_websocket(
-    user: User = Depends(CurrentUser(Token.Access.Meeting.InitOrClose)),
-    provider: bool = False,
+# websocket related
+
+def request_websocket(
+    user: User,
+    provider: bool,
 ) -> TokenResponseModel:
   return TokenResponseModel(
       detail={'user': user.email if user else None},
@@ -73,6 +74,40 @@ async def request_websocket(
           AppConfig.AccessTokenExpires
       )
   )
+
+@app.get('/api/meet/ws_request/provide', response_model_exclude_none=True)
+async def request_websocket(
+    user: User = Depends(CurrentUser(Token.Access.Meeting.Provide)),
+) -> TokenResponseModel:
+  return request_websocket(user, True)
+
+@app.get('/api/meet/ws_request/consume', response_model_exclude_none=True)
+async def request_websocket(
+    user: User = Depends(CurrentUser(Token.Access.Meeting.Consume)),
+) -> TokenResponseModel:
+  return request_websocket(user, False)
+
+@app.websocket('/ws/meet/provide')
+async def provide(websocket: WebSocket, token: str, format: str):
+  h = ProviderHandler(websocket, token, format)
+  await h.work()
+
+@app.websocket('/ws/meet/consume')
+async def consume(websocket: WebSocket, token: str):
+  h = ConsumerHandler(websocket, token)
+  await h.work()
+
+
+# data
+
+@app.get('/api/meet/data')
+async def download_data(
+    time_start: datetime,
+    time_end: Optional[datetime] = None,
+    user: User = Depends(CurrentUser(Token.Access.Meeting.Data)),
+):
+  # TODO
+  return '[]'
 
 
 initialize_db()
