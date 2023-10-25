@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 import asyncio
 import concurrent.futures
 
-from transcript.worker import TranscriptionResult, Worker
+from transcribe.worker import TranscriptionResult, TranscribeWorker
 
 _executor = concurrent.futures.ThreadPoolExecutor()
 _run_async = lambda f, *a: asyncio.get_event_loop().run_in_executor(_executor, f, *a)
@@ -75,7 +75,7 @@ async def transcribe_and_segment(
   return results, incomplete_result, sample_retain
 
 
-class WhisperWorker(Worker):
+class WhisperWorker(TranscribeWorker):
 
   def __init__(
           self,

@@ -17,10 +17,19 @@ class AppConfigModel(BaseModel):
   JwtSecretKey: str = 'JWT Secret Key'
   HmacSalt: bytes = b'HMAC Salt'
   
+  DeepLAuthKey: str = 'DeepL Auth Key'
+  DeepLFreePlan: bool = True
+  
   AccessTokenExpires: timedelta = parse_timedelta('5min')
   RefreshTokenExpires: timedelta = parse_timedelta('180d')
   
+  # TODO
+  
   TokenAccessOverride: Dict[str, Union[str, List[str]]] = Field(default_factory=dict)
+  
+  RestrictLanguage: bool = False # to avoid strange language recognition
+  AllowedLanguages: List[str] = ['zh', 'en', 'jp'] 
+  TranslationTarget: str = 'en'
   
   @field_serializer('AccessTokenExpires', 'RefreshTokenExpires')
   def serialize_timedelta(self, delta: timedelta):

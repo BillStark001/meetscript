@@ -6,8 +6,10 @@ import numpy as np
 from numpy.typing import NDArray
 import datetime
 
+from utils.object import format_time
 
-class Worker(abc.ABC):
+
+class TranscribeWorker(abc.ABC):
 
   @abc.abstractmethod
   async def init_model(self):
@@ -43,6 +45,4 @@ class TranscriptionResult:
   lang: str = ''
 
   def __str__(self) -> str:
-    formatted_time = datetime.datetime.utcfromtimestamp(
-        self.start / 1000).strftime('%H:%M:%S.%f')[:-3]
-    return f'[{self.lang},{formatted_time}+{(self.end - self.start) / 1000}{"P" if self.partial else ""}] {self.text}'
+    return f'[{self.lang},{format_time(datetime.datetime.utcfromtimestamp(self.start / 1000))}+{(self.end - self.start) / 1000}{"P" if self.partial else ""}] {self.text}'

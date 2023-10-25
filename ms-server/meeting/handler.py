@@ -3,16 +3,17 @@ from typing import Optional, Callable
 from numpy.typing import NDArray
 import numpy as np
 
-from pydantic import BaseModel, Field
 from datetime import datetime
-from queue import Queue
 
-from fastapi import WebSocket
+from transcribe.worker import TranscribeWorker, TranscriptionResult
+from transcribe.w_whisper import WhisperWorker
 
-from transcript.worker import Worker, TranscriptionResult
-from transcript.w_whisper import WhisperWorker
+from translate.worker import TranslateWorker
+from translate.w_deepl import DeepLWorker
 
-from meeting.model import initialize_db, add_record
+from config import AppConfig
+
+from meeting.model import initialize_db, add_record, update_translations, TranslationResult
 
 DEBUG_MODE = False
 
@@ -20,7 +21,7 @@ class MeetingHandler:
 
   def __init__(
       self,
-      callback: Callable[[TranscriptionResult], asyncio.Task],
+      callback: Callable[[Optional[TranscriptionResult], Optional[TranslationResult]], asyncio.Task],
       session: str = 'default',
       name: Optional[str] = None,
       time: Optional[datetime] = None,
@@ -34,7 +35,8 @@ class MeetingHandler:
     self.dummy_threshold = dummy_threshold
     self.time = time if time is not None else datetime.utcnow()
 
-    self.worker: Optional[Worker] = None
+    self.tc_worker: Optional[TranscribeWorker] = None
+    self.tl_worker: Optional[TranslateWorker] = None
     self.provider_set = set()
     self.provider: Optional[tuple] = None
     self.dummy_work_count = 0
@@ -45,16 +47,21 @@ class MeetingHandler:
     
 
   async def init(self):
-    if self.worker is None:
-      self.worker = WhisperWorker('small')
+    if self.tc_worker is None:
+      self.tc_worker = WhisperWorker('medium')
+    if self.tl_worker is None:
+      self.tl_worker = DeepLWorker(AppConfig.DeepLAuthKey, AppConfig.DeepLFreePlan)
+      
     initialize_db(self.session)
-    await self.worker.init_model()
+    await self.tc_worker.init_model()
     self.dummy_work_count = 0
 
   async def close(self):
-    await self.worker.close_model()
-    del self.worker
-    self.worker = None
+    await self.tc_worker.close_model()
+    del self.tc_worker
+    self.tc_worker = None
+
+  # provider
 
   def add_provider(self, provider: tuple):
     self.provider_set.add(provider)
@@ -76,10 +83,53 @@ class MeetingHandler:
       return True
     return self.provider == provider
 
+
+  def start_providing(self):
+    
+    in_transcrition = False
+    
+    async def _task():
+      nonlocal in_transcrition
+      try:
+        while self.tc_worker is not None:
+          
+          await self.run_transcription_once()
+          await asyncio.sleep(self.work_duration * 0.2)
+          
+          await self.run_translation_once()
+          await asyncio.sleep(self.work_duration * 0.8)
+          
+      except asyncio.CancelledError as e:
+        print('Task Cancelled.')
+        return False
+      return True
+    
+    def _task_done(_):
+      e = self.provider_task.exception()
+      del self.provider_task
+      self.provider_task = None
+      if e is not None and not isinstance(e, asyncio.CancelledError):
+        raise e
+    
+    self.provider_task = asyncio.create_task(_task())
+    self.provider_task.add_done_callback(_task_done)
+    
+  def stop_providing(self):
+    if not self.provider_task:
+      return
+    self.provider_task.cancel()
+    self.provider_task = None
+
+
   async def enqueue_audio_data(self, time: int, data: NDArray[np.float32]):
     async with self.lock:
-      await self.worker.enqueue_chunk(time, data)
+      await self.tc_worker.enqueue_chunk(time, data)
       self.dummy_work_count = 0
+    
+    # if not self.provider_task:
+    #   self.start_providing()
+    
+  # transcription
     
   async def run_transcription_once(self):
     res = []
@@ -92,7 +142,7 @@ class MeetingHandler:
       current_dummy_work_count = self.dummy_work_count
     
       if do_transcribe:
-        res = await self.worker.transcribe_once()
+        res = await self.tc_worker.transcribe_once()
       
       # in case no data for too long time
       # clear the last result if necessary
@@ -103,10 +153,10 @@ class MeetingHandler:
         self.last_result.partial = False
         res = [self.last_result] + res
         self.last_result = None
-        await self.worker.discard_chunks()
+        await self.tc_worker.discard_chunks()
         
       if DEBUG_MODE and res:
-        print('W', flag1, self.worker.last_element[0] if self.worker.last_element else '-')
+        print('W', flag1, self.tc_worker.last_element[0] if self.tc_worker.last_element else '-')
         if self.last_result:
           print('L', self.last_result)
         for _ in res:
@@ -124,46 +174,26 @@ class MeetingHandler:
           )
         else:
           self.last_result = result_raw
-        await self.callback(result_raw)
-      
-  def start_providing(self):
-    
-    in_transcrition = False
-    
-    async def _task():
-      nonlocal in_transcrition
-      try:
-        while self.worker is not None:
-          # if in_transcrition:
-          #   continue
-          # in_transcrition = True
-          await self.run_transcription_once()
-          # in_transcrition = False
-          await asyncio.sleep(self.work_duration)
-      except asyncio.CancelledError as e:
-        print('Task Cancelled.')
-        return True, e
-      except e:
-        print(e)
-        return False, e
-      return True, None
-    
-    async def _task_done(*args):
-      e = self.provider_task.exception()
-      del self.provider_task
-      self.provider_task = None
-      if e is not None and not isinstance(e, asyncio.CancelledError):
-        raise e
-    
-    self.provider_task = asyncio.create_task(_task())
-    self.provider_task.add_done_callback(_task_done)
-    
-  def stop_providing(self):
-    if not self.provider_task:
-      return
-    self.provider_task.cancel()
-    self.provider_task = None
+        await self.callback(result_raw, None)
         
+  # translation
+        
+  async def handle_translation(self, src: str, dst: str, txt: str):
+    if src == dst:
+      return txt
+    return await self.tl_worker.translate(txt, dst)
+  
+  async def handle_translated(self, result: TranslationResult):
+    await self.callback(None, result)
+        
+  async def run_translation_once(self):
+    await update_translations(
+      self.handle_translation,
+      self.session,
+      datetime.utcfromtimestamp(1),
+      AppConfig.TranslationTarget,
+      self.handle_translated,
+    )
     
     
     

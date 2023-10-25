@@ -15,11 +15,12 @@ from base import app
 from user import User
 from user.auth import get_current_user_ws
 from constants import Token, Codes, getDescriptionWs
-from utils.object import EventBasedWebSocketHandler
+from utils.web import EventBasedWebSocketHandler
 
 from meeting.handler import MeetingHandler
+from meeting.model import TranslationResult
 
-from transcript.worker import TranscriptionResult
+from transcribe.worker import TranscriptionResult
 
 _handler: Optional[MeetingHandler] = None
 _active_sockets: Set['ConsumerHandler'] = set()
@@ -32,14 +33,22 @@ def set_handler(h: Optional[MeetingHandler]):
   global _handler
   _handler = h
 
-async def send_transcription(data: TranscriptionResult):
+async def send_transcription(
+  data_tc: Optional[TranscriptionResult],
+  data_tl: Optional[TranslationResult],
+):
+  if data_tc is None:
+    if data_tl is not None:
+      print(data_tl)
+    return
+  
   dead_sockets = []
   crs = []
   for s in _active_sockets:
     if s.socket.client_state == WebSocketState.DISCONNECTED:
       dead_sockets.append(s)
       continue
-    crs.append(s.send(dataclasses.asdict(data)))
+    crs.append(s.send(dataclasses.asdict(data_tc)))
   await asyncio.gather(*crs)
   for s in dead_sockets:
     if s in _active_sockets:

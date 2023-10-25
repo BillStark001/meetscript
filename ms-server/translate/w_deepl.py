@@ -6,21 +6,23 @@ import re
 import urllib.parse
 import logging
 
+from translate.worker import TranslateWorker
+
 default_logger = logging.getLogger(__name__)
 
 # Reference: https://github.com/seratch/deepl-for-slack/blob/master/src/deepl.ts
-class DeepLApi:
+class DeepLWorker(TranslateWorker):
 
   def __init__(
       self,
       auth_key: str,
       using_free_plan: bool,
-      logger: Optional[logging.Logger],
+      logger: Optional[logging.Logger] = None,
   ):
     self.auth_key = auth_key
     self.logger = logger or default_logger
     api_subdomain = "api-free" if using_free_plan else "api"
-    self.base_url = f"https://{api_subdomain}.deepl.com/v2"
+    self.base_url = f"https://{api_subdomain}.deepl.com"
 
   async def translate(self, text: str, target_language: str):
     data = {
@@ -32,15 +34,20 @@ class DeepLApi:
     }
 
     headers = {"content-type": "application/x-www-form-urlencoded;charset=utf-8"}
+    data_encoded = aiohttp.FormData(data)
 
     response_data = None
+    response_error = None
     async with aiohttp.ClientSession() as session:
       async with session.post(
-          urllib.parse.urljoin(self.base_url, "/translate"),
-          data=data,
+          urllib.parse.urljoin(self.base_url, "/v2/translate"),
+          data=data_encoded,
           headers=headers
       ) as response:
-        response_data = await response.json()
+        try:
+          response_data = await response.json()
+        except Exception as e:
+          response_error = e
 
     if response_data is not None and \
         "translations" in response_data and \

@@ -5,7 +5,7 @@ import torch
 
 from subprocess import CalledProcessError, run
 
-from transcript.w_whisper import WhisperWorker
+from transcribe.w_whisper import WhisperWorker
 
 from whisper.audio import load_audio
 
