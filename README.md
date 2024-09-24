@@ -1,6 +1,8 @@
 # MeetScript
 
-A tool set to transcript and translate meetings in real-time.
+A tool set to transcribe and translate meetings in real-time.
+
+**Important Notice: Zoom has released official transcription and translation functionality, so this repository's development is postponed although it is fully functional.**
 
 ## Overall Structure
 
