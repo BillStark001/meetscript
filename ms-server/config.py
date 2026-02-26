@@ -45,12 +45,26 @@ class AppConfigModel(BaseModel):
 
 load_dotenv()
 
+
+def _parse_bool(val: str, default: bool = False) -> bool:
+  if not val:
+    return default
+  return val.strip().lower() not in {'0', 'false', 'none', 'null'}
+
+
 mount_static_str = os.environ.get('MOUNT_STATIC', '')
-mount_static = bool(mount_static_str and \
-  mount_static_str.strip().lower() not in {'0', 'false', 'none', 'null'})
+mount_static = _parse_bool(mount_static_str)
+
+allow_lan_str = os.environ.get('ALLOW_LAN', '')
+allow_lan = _parse_bool(allow_lan_str)
+
+db_url = os.environ.get('DB_URL', 'sqlite+aiosqlite:///./meetscript.db')
+
 
 class EnvConfig:
   mount_static = mount_static
+  allow_lan = allow_lan
+  db_url = db_url
 
 # app config
 

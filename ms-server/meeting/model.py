@@ -1,71 +1,71 @@
 import asyncio
 import os
-import peewee as pw
-import peewee_async as pwa
 from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from typing import Optional, Callable, Iterable
 
+from sqlalchemy import Column, Integer, String, DateTime, Text, select
+from sqlalchemy.exc import IntegrityError
+
 from constants import Codes
-from utils.sqlite import AsyncSqliteDatabase
+from utils.db import Base, AsyncSessionLocal
 from utils.object import format_time
 
-db = AsyncSqliteDatabase(None)
-objects = pwa.Manager(db)
 
-_MEETING_SESSION_DIR = './meetings/'
-os.makedirs(_MEETING_SESSION_DIR, exist_ok=True)
+class MeetingRecord(Base):
+  __tablename__ = 'meeting_records'
 
-
-def initialize_db(target: str = 'default'):
-  db.init(os.path.join(_MEETING_SESSION_DIR, target + '.sqlite'))
-  db.set_allow_sync(False)
-  with db.allow_sync():
-    db.connect()
-    db.create_tables([MeetingRecord], safe=True)
-    db.close()
-
-
-class MeetingRecord(pw.Model):
-  session = pw.CharField(max_length=36, default='')
-  time = pw.DateTimeField(default=datetime.utcfromtimestamp(0))
-  lang = pw.CharField(max_length=8, default='')
-  text = pw.TextField(default='')
-  translate1 = pw.TextField(default='')
-  translate2 = pw.TextField(default='')
-  translate3 = pw.TextField(default='')
-  translate4 = pw.TextField(default='')
-
-  class Meta:
-    database = db
+  id = Column(Integer, primary_key=True, autoincrement=True)
+  session = Column(String(36), nullable=False, default='')
+  time = Column(DateTime, nullable=False, default=lambda: datetime.utcfromtimestamp(0))
+  lang = Column(String(8), nullable=False, default='')
+  text = Column(Text, nullable=False, default='')
+  translate1 = Column(Text, nullable=False, default='')
+  translate2 = Column(Text, nullable=False, default='')
+  translate3 = Column(Text, nullable=False, default='')
+  translate4 = Column(Text, nullable=False, default='')
 
 
 _TRANSLATE_ORDER = {
-    'en': (1, MeetingRecord.translate1),
-    'jp': (2, MeetingRecord.translate2),
-    'zh': (3, MeetingRecord.translate3),
+    'en': (1, 'translate1'),
+    'jp': (2, 'translate2'),
+    'zh': (3, 'translate3'),
 }
+
+
+def initialize_db(target: str = 'default'):
+  async def _init():
+    from utils.db import engine
+    async with engine.begin() as conn:
+      await conn.run_sync(Base.metadata.create_all)
+
+  try:
+    loop = asyncio.get_running_loop()
+    loop.create_task(_init())
+  except RuntimeError:
+    asyncio.run(_init())
 
 
 async def add_record(
     session: str,
     time: datetime,
     text: str,
-    lang: Optional[str] = None
+    lang: Optional[str] = None,
 ):
   try:
-    i, _ = _TRANSLATE_ORDER.get(lang, (-1, None))
-    kwargs = {} if i < 0 else {f'translate{i}': text}
-    await objects.create(
-        MeetingRecord,
-        session=session,
-        time=time,
-        text=text,
-        lang=lang or '',
-        **kwargs
-    )
-  except pw.IntegrityError:
+    i, col_name = _TRANSLATE_ORDER.get(lang, (-1, None))
+    kwargs = {} if i < 0 else {col_name: text}
+    async with AsyncSessionLocal() as db_session:
+      db_session.add(MeetingRecord(
+          session=session,
+          time=time,
+          text=text,
+          lang=lang or '',
+          **kwargs,
+      ))
+      await db_session.commit()
+  except IntegrityError:
     return Codes.ERR_SESSION_DB
 
 
@@ -75,14 +75,18 @@ async def fetch_records(
     time_end: Optional[datetime] = None,
     lang: Optional[str] = None,
 ):
-  where_clause = (MeetingRecord.session == session) & \
-      (MeetingRecord.time >= time_start)
+  stmt = select(MeetingRecord).where(
+      MeetingRecord.session == session,
+      MeetingRecord.time >= time_start,
+  )
   if time_end is not None:
-    where_clause = where_clause & (MeetingRecord.time <= time_end)
+    stmt = stmt.where(MeetingRecord.time <= time_end)
   if lang is not None and lang != '':
-    where_clause = where_clause & (MeetingRecord.lang.startswith(lang))
-  results = await objects.execute(MeetingRecord.select().where(where_clause))
-  return results
+    stmt = stmt.where(MeetingRecord.lang.startswith(lang))
+  async with AsyncSessionLocal() as db_session:
+    result = await db_session.execute(stmt)
+    return result.scalars().all()
+
 
 # translation related
 
@@ -98,32 +102,39 @@ class TranslationResult:
 
 
 async def update_translations(
-    f_translate: Callable[[str, str, str], asyncio.Task[str]],  # src, tgt, txt_src -> txt_tgt
+    f_translate: Callable[[str, str, str], asyncio.Task],
     session_value: Optional[str],
     time_threshold: datetime,
     language: str,
-    f_callback: Optional[Callable[[TranslationResult], asyncio.Task]] = None,
+    f_callback: Optional[Callable[['TranslationResult'], asyncio.Task]] = None,
 ):
-  lang_id, lang_key = _TRANSLATE_ORDER.get(language, (-1, None))
-  if not lang_key:
+  lang_id, col_name = _TRANSLATE_ORDER.get(language, (-1, None))
+  if not col_name:
     return False
 
-  lang_objkey = f'translate{lang_id}'
+  col_attr = getattr(MeetingRecord, col_name)
 
-  where_clause = (MeetingRecord.time > time_threshold) & (
-      MeetingRecord.lang != language) & (lang_key == '')
+  stmt = select(MeetingRecord).where(
+      MeetingRecord.time > time_threshold,
+      MeetingRecord.lang != language,
+      col_attr == '',
+  )
   if session_value:
-    where_clause = where_clause & (MeetingRecord.session == session_value)
+    stmt = stmt.where(MeetingRecord.session == session_value)
 
-  records: Iterable[MeetingRecord] = await objects.execute(MeetingRecord.select().where(where_clause))
+  async with AsyncSessionLocal() as db_session:
+    result = await db_session.execute(stmt)
+    records = result.scalars().all()
 
-  for record in records:
-    translated_text = await f_translate(record.lang, language, record.text)
-    setattr(record, lang_objkey, translated_text)
-    if f_callback:
-      ts = int(record.time.replace(tzinfo=timezone.utc).timestamp() * 1000)
-      res = TranslationResult(ts, record.text, record.lang, translated_text)
-      await f_callback(res)
-    await objects.update(record)
+    for record in records:
+      translated_text = await f_translate(record.lang, language, record.text)
+      setattr(record, col_name, translated_text)
+      if f_callback:
+        ts = int(record.time.replace(tzinfo=timezone.utc).timestamp() * 1000)
+        res = TranslationResult(ts, record.text, record.lang, translated_text)
+        await f_callback(res)
+
+    await db_session.commit()
 
   return True
+
