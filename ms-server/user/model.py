@@ -1,12 +1,10 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 from typing import Optional, Tuple
 
 from sqlalchemy import Column, Integer, String, DateTime, select, update
 from sqlalchemy.exc import IntegrityError
-
-import user.format as f
 from constants import Codes, UserGroup
 from utils.db import Base, AsyncSessionLocal
 
@@ -19,7 +17,7 @@ class User(Base):
   id = Column(Integer, primary_key=True, autoincrement=True)
   email = Column(String(32), unique=True, nullable=False)
   pw_hash = Column(String(128), nullable=False, default='')
-  pw_update = Column(DateTime, nullable=False, default=lambda: datetime.utcfromtimestamp(0))
+  pw_update = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.fromtimestamp(0, tz=timezone.utc))
   username = Column(String(32), nullable=False, default='')
   group = Column(String(64), nullable=False, default='')
 
@@ -39,7 +37,7 @@ class User(Base):
     if not f.is_valid_password(password):
       return Codes.ERR_INVALID_PASSWORD
     self.pw_hash = f.encode_password(password)
-    self.pw_update = datetime.utcnow()
+    self.pw_update = datetime.now(tz=timezone.utc)
     if save:
       async with AsyncSessionLocal() as session:
         await session.execute(
@@ -56,7 +54,7 @@ guest_user = User(
     pw_hash='',
     username='guest',
     group=UserGroup.Guest,
-    pw_update=datetime.utcfromtimestamp(0),
+    pw_update=datetime.fromtimestamp(0, tz=timezone.utc),
 )
 
 
@@ -73,7 +71,7 @@ def initialize_db():
             email='__root__',
             username='root',
             pw_hash=f.encode_password(root_pw),
-            pw_update=datetime.utcnow(),
+            pw_update=datetime.now(tz=timezone.utc),
             group=UserGroup.Root,
         ))
         await session.commit()
@@ -103,7 +101,7 @@ async def create_user(email: str, username: str, password: str, group: str = Use
           email=email,
           username=username,
           pw_hash=pw_hash,
-          pw_update=datetime.utcnow(),
+          pw_update=datetime.now(tz=timezone.utc),
           group=group,
       ))
       await session.commit()

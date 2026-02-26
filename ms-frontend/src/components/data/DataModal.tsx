@@ -141,8 +141,8 @@ export const DataModalButton = <S extends ObjectKey,>(props: DataModalButtonProp
         handleSubmit((d) => onSubmit?.call(undefined, state, d)) :
         undefined
     }
-    isLoading={isSubmitting ?? false}
-    isDisabled={disabled ?? isSubmitting ?? false}
+    loading={isSubmitting ?? false}
+    disabled={disabled ?? isSubmitting ?? false}
   >
     {label}
     {children}

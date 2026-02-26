@@ -17,6 +17,7 @@ from utils.web import EventBasedWebSocketHandler
 
 from meeting.handler import MeetingHandler
 from meeting.model import TranslationResult
+from meeting.stability import CorrectionEvent
 
 from transcribe.worker import TranscriptionResult
 
@@ -39,15 +40,45 @@ async def send_transcription(
     return
   dead_sockets = []
   crs = []
+
+  if data_tc is not None:
+    msg: dict = {
+        'type': 'transcription',
+        'utt_id': data_tc.utt_id,
+        'seq_id': data_tc.seq_id,
+        'text': data_tc.text,
+        'lang': data_tc.lang,
+        'start': data_tc.start,
+        'end': data_tc.end,
+        'is_final': data_tc.is_final,
+    }
+  else:
+    assert data_tl is not None
+    msg = dataclasses.asdict(data_tl)
+
   for s in _active_sockets:
     if s.socket.client_state == WebSocketState.DISCONNECTED:
       dead_sockets.append(s)
       continue
-    dict_to_send = {
-      **(dataclasses.asdict(data_tc) if data_tc else {}),
-      **(dataclasses.asdict(data_tl) if data_tl else {}),
-    }
-    crs.append(s.send(dataclasses.asdict(dict_to_send)))
+    crs.append(s.send(msg))
+  await asyncio.gather(*crs)
+  for s in dead_sockets:
+    if s in _active_sockets:
+      _active_sockets.remove(s)
+
+
+async def send_correction(evt: CorrectionEvent):
+  """Broadcast a correction event to all consumer sockets."""
+  if not _active_sockets:
+    return
+  msg = dataclasses.asdict(evt)
+  crs = []
+  dead_sockets = []
+  for s in _active_sockets:
+    if s.socket.client_state == WebSocketState.DISCONNECTED:
+      dead_sockets.append(s)
+      continue
+    crs.append(s.send(msg))
   await asyncio.gather(*crs)
   for s in dead_sockets:
     if s in _active_sockets:

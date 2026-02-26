@@ -18,7 +18,7 @@ class MeetingRecord(Base):
 
   id = Column(Integer, primary_key=True, autoincrement=True)
   session = Column(String(36), nullable=False, default='')
-  time = Column(DateTime, nullable=False, default=lambda: datetime.utcfromtimestamp(0))
+  time = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.fromtimestamp(0, tz=timezone.utc))
   lang = Column(String(8), nullable=False, default='')
   text = Column(Text, nullable=False, default='')
   translate1 = Column(Text, nullable=False, default='')
@@ -98,7 +98,7 @@ class TranslationResult:
   translated: str = ''
 
   def __str__(self) -> str:
-    return f'[{self.lang},{format_time(datetime.utcfromtimestamp(self.start / 1000))}] {self.text} -> {self.translated}'
+    return f'[{self.lang},{format_time(datetime.fromtimestamp(self.start / 1000, tz=timezone.utc))}] {self.text} -> {self.translated}'
 
 
 async def update_translations(

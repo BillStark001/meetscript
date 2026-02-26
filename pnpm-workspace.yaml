@@ -1,0 +1,4 @@
+packages:
+  - 'ms-frontend'
+  - 'ms-client-win'
+  - 'ms-client-mac'

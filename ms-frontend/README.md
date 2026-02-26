@@ -1,27 +1,39 @@
-# React + TypeScript + Vite
+# ms-frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MeetScript web client — React 19 + Chakra UI v3.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React 19** with TypeScript
+- **Chakra UI v3** for UI components
+- **Vite 6** for bundling
+- **Jotai** for state management
+- **react-i18next** for i18n
+- **react-router-dom v7** for routing
+- **Vitest** for unit tests
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-   parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-   },
+```bash
+pnpm install
+pnpm dev        # start dev server (proxies /api and /ws to localhost:8000)
+pnpm build      # production build
+pnpm preview    # preview production build
+pnpm lint       # lint
+pnpm test       # run unit tests
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+## WebSocket Protocol
+
+The consumer WebSocket (`/ws/meet/consume`) receives JSON messages keyed by `utt_id` and `seq_id`.
+A higher `seq_id` for the same `utt_id` supersedes the previous partial result (progressive repair).
+When `is_final: true` the utterance is committed.  A `type: "correction"` event allows post-hoc
+LLM-based fixes to already-final utterances.
+
+## Testing
+
+Pure-logic unit tests live in `src/__tests__/`.  Run with:
+
+```bash
+pnpm test
+```

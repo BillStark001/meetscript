@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordBearer
@@ -20,7 +20,7 @@ def create_jwt_token(
     expires_delta: timedelta = None
 ):
   to_encode = {'sub': data.email, 'name': data.username, 'type': token_type}
-  utcnow = datetime.utcnow()
+  utcnow = datetime.now(tz=timezone.utc)
   if expires_delta:
     expire = utcnow + expires_delta
   else:
@@ -42,7 +42,7 @@ async def verify_jwt_token(
   except JWTError:
     return None, True  # the token is invalid
   email = payload.get('sub')
-  issue_time = datetime.utcfromtimestamp(payload.get('iat'))
+  issue_time = datetime.fromtimestamp(payload.get('iat'), tz=timezone.utc)
   user = await get_user(email)
   if user is not None and user.pw_update > issue_time:
     return None, True  # the token is expired
