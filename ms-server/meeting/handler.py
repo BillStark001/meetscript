@@ -3,7 +3,7 @@ from typing import Optional, Callable
 from numpy.typing import NDArray
 import numpy as np
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from transcribe.worker import TranscribeWorker, TranscriptionResult
 from transcribe.w_whisper import WhisperWorker
@@ -14,6 +14,7 @@ from translate.w_deepl import DeepLWorker
 from config import AppConfig
 
 from meeting.model import initialize_db, add_record, update_translations, TranslationResult
+from meeting.stability import UttTracker, UtteranceEvent
 
 DEBUG_MODE = False
 
@@ -33,7 +34,7 @@ class MeetingHandler:
     self.name = name
     self.work_duration = work_duration
     self.dummy_threshold = dummy_threshold
-    self.time = time if time is not None else datetime.utcnow()
+    self.time = time if time is not None else datetime.now(tz=timezone.utc)
 
     self.tc_worker: Optional[TranscribeWorker] = None
     self.tl_worker: Optional[TranslateWorker] = None
@@ -44,6 +45,7 @@ class MeetingHandler:
     self.provider_task: Optional[asyncio.Task] = None
     
     self.lock = asyncio.Lock()
+    self._utt_tracker = UttTracker()
     
 
   async def init(self):
@@ -164,11 +166,20 @@ class MeetingHandler:
         print()
         
       for result_raw in res:
+        utt_evt = self._utt_tracker.assign(
+            start=result_raw.start,
+            text=result_raw.text,
+            lang=result_raw.lang,
+            end=result_raw.end,
+            is_final=not result_raw.partial,
+        )
+        result_raw.utt_id = utt_evt.utt_id
+        result_raw.seq_id = utt_evt.seq_id
         if not result_raw.partial:
           # store the result into db
           await add_record(
             self.session, 
-            datetime.utcfromtimestamp(result_raw.start / 1000), 
+            datetime.fromtimestamp(result_raw.start / 1000, tz=timezone.utc), 
             result_raw.text,
             result_raw.lang,
           )
@@ -190,7 +201,7 @@ class MeetingHandler:
     await update_translations(
       self.handle_translation,
       self.session,
-      datetime.utcfromtimestamp(1),
+      datetime.fromtimestamp(1, tz=timezone.utc),
       AppConfig.TranslationTarget,
       self.handle_translated,
     )

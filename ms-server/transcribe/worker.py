@@ -43,6 +43,12 @@ class TranscriptionResult:
   end: int = 0
   text: str = ''
   lang: str = ''
+  utt_id: int = 0
+  seq_id: int = 0
+
+  @property
+  def is_final(self) -> bool:
+    return not self.partial
 
   def __str__(self) -> str:
     return f'[{self.lang},{format_time(datetime.datetime.utcfromtimestamp(self.start / 1000))}+{(self.end - self.start) / 1000}{"P" if self.partial else ""}] {self.text}'

@@ -1,0 +1,17 @@
+{
+  "name": "meetscript",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev:frontend": "pnpm --filter ms-frontend dev",
+    "dev:server": "cd ms-server && uvicorn main:app --reload --port 8000",
+    "build:frontend": "pnpm --filter ms-frontend build",
+    "deploy": "tsx scripts/deploy.ts",
+    "deploy:nginx": "tsx scripts/deploy.ts --nginx",
+    "cert": "tsx scripts/deploy.ts --gen-cert"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

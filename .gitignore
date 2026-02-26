@@ -161,3 +161,9 @@ cython_debug/
 
 runtime
 cert
+
+# Node.js
+node_modules/
+
+# pnpm
+pnpm-lock.yaml

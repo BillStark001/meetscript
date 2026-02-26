@@ -1,61 +1,93 @@
 import { atom, useAtom } from "jotai";
-import { TranscriptionResult } from "@/api/meeting";
 import { Tag, Wrap } from "@chakra-ui/react";
 
-const historyTranscriptsAtom = atom<TranscriptionResult[]>([]);
-const incompleteTranscriptAtom = atom<TranscriptionResult | undefined>(undefined);
+export type TranscriptionResult = {
+  utt_id: number;
+  seq_id: number;
+  is_final: boolean;
+  start: number;
+  end: number;
+  text: string;
+  lang: string;
+};
+
+export type CorrectionEvent = {
+  type: 'correction';
+  utt_id: number;
+  original: string;
+  replacement: string;
+};
+
+// Map of utt_id -> latest result
+const transcriptsAtom = atom<Map<number, TranscriptionResult>>(new Map());
 
 const getTime = (d: Date) => {
-  const hours = d.getHours().toString().padStart(2, '0');
-  const minutes = d.getMinutes().toString().padStart(2, '0');
-  const seconds = d.getSeconds().toString().padStart(2, '0');
-
-  const timeString = `${hours}:${minutes}:${seconds}`;
-  return timeString;
-}
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  const s = d.getSeconds().toString().padStart(2, '0');
+  return `${h}:${m}:${s}`;
+};
 
 export const useTranscript = () => {
-  const [tHist, setHist] = useAtom(historyTranscriptsAtom);
-  const [tIcmp, setIcmp] = useAtom(incompleteTranscriptAtom);
+  const [transcripts, setTranscripts] = useAtom(transcriptsAtom);
 
   const onMessage = (t: TranscriptionResult) => {
-    if (t.partial) {
-      setIcmp(t);
-    } else {
-      setHist(tHist => [...tHist, t]);
-      if (tIcmp && (t.start >= tIcmp.start)) {
-        setIcmp(undefined);
+    setTranscripts(prev => {
+      const next = new Map(prev);
+      const existing = next.get(t.utt_id);
+      if (!existing || t.seq_id > existing.seq_id) {
+        next.set(t.utt_id, t);
       }
-    }
+      return next;
+    });
   };
 
-  const clear = () => {
-    setHist([]);
-    setIcmp(undefined);
+  const onCorrection = (evt: CorrectionEvent) => {
+    setTranscripts(prev => {
+      const entry = prev.get(evt.utt_id);
+      if (!entry) return prev;
+      const next = new Map(prev);
+      next.set(evt.utt_id, {
+        ...entry,
+        text: entry.text.replace(evt.original, evt.replacement),
+      });
+      return next;
+    });
   };
 
-  return {
-    history: tHist,
-    incomplete: tIcmp,
-    onMessage,
-    clear,
-  };
-}
+  const clear = () => setTranscripts(new Map());
+
+  const history = Array.from(transcripts.values())
+    .filter(t => t.is_final)
+    .sort((a, b) => a.utt_id - b.utt_id);
+
+  const incomplete = Array.from(transcripts.values())
+    .filter(t => !t.is_final)
+    .sort((a, b) => a.utt_id - b.utt_id);
+
+  return { history, incomplete, onMessage, onCorrection, clear, transcripts };
+};
 
 type Props = {
-  history?: TranscriptionResult[],
-  incomplete?: TranscriptionResult,
-}
+  history?: TranscriptionResult[];
+  incomplete?: TranscriptionResult[];
+};
 
 export const TranscriptView = (props: Props) => {
   const { history, incomplete } = props;
-  return <Wrap>
-    { history?.map(x => <Tag key={`${x.start}-${x.end}-${x.lang.substring(8)}`}>
-      <span>{x.lang} / {getTime(new Date(x.start))} / {x.text}</span>
-    </Tag>) }
-    { incomplete && <Tag bgColor='gray.400'>
-      {getTime(new Date(incomplete.start))} / {incomplete.text}
-    </Tag> }
-    { (!history && !incomplete) && 'No Input' }
-  </Wrap>
+  return (
+    <Wrap>
+      {history?.map(x => (
+        <Tag.Root key={`${x.utt_id}-final`}>
+          <Tag.Label>{x.lang} / {getTime(new Date(x.start))} / {x.text}</Tag.Label>
+        </Tag.Root>
+      ))}
+      {incomplete?.map(x => (
+        <Tag.Root key={`${x.utt_id}-partial`} colorPalette="gray">
+          <Tag.Label>{getTime(new Date(x.start))} / {x.text}</Tag.Label>
+        </Tag.Root>
+      ))}
+      {(!history?.length && !incomplete?.length) && 'No Input'}
+    </Wrap>
+  );
 };

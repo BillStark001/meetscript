@@ -1,82 +1,91 @@
 import asyncio
-import peewee as pw
-import peewee_async as pwa
-from datetime import datetime
+from datetime import datetime, timezone
 
 from typing import Optional, Tuple
 
-import user.format as f
+from sqlalchemy import Column, Integer, String, DateTime, select, update
+from sqlalchemy.exc import IntegrityError
 from constants import Codes, UserGroup
-from utils.sqlite import AsyncSqliteDatabase
+from utils.db import Base, AsyncSessionLocal
 
 import uuid
 
 
-# database
+class User(Base):
+  __tablename__ = 'users'
 
-db = AsyncSqliteDatabase(None)
-objects = pwa.Manager(db)
-
-
-def initialize_db():
-  db.init('./users.sqlite')
-  db.set_allow_sync(False)
-  with db.allow_sync():
-    db.connect()
-    db.create_tables([User], safe=True)
-    db.close()
-    # create root user
-    try:
-      User.get(User.email == '__root__')
-    except User.DoesNotExist:
-      pw = str(uuid.uuid1())
-      User.create(
-          email='__root__',
-          username='root',
-          pw_hash=f.encode_password(pw),
-          pw_update=datetime.utcnow(),
-          group=UserGroup.Root
-      )
-      with open('./root_pwd.txt', 'w') as f1:
-        f1.write(pw)
-
-
-class User(pw.Model):
-
-  email = pw.CharField(unique=True, max_length=32)
-  pw_hash = pw.CharField(max_length=128)
-  pw_update = pw.DateTimeField(default=datetime.utcfromtimestamp(0))
-
-  username = pw.CharField(max_length=32)
-  group = pw.CharField(max_length=64)
-
-  class Meta:
-    database = db
+  id = Column(Integer, primary_key=True, autoincrement=True)
+  email = Column(String(32), unique=True, nullable=False)
+  pw_hash = Column(String(128), nullable=False, default='')
+  pw_update = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.fromtimestamp(0, tz=timezone.utc))
+  username = Column(String(32), nullable=False, default='')
+  group = Column(String(64), nullable=False, default='')
 
   async def set_username(self, username: str, save=True):
     if not f.is_valid_username(username):
       return Codes.ERR_INVALID_USERNAME
     self.username = username
     if save:
-      await objects.update(self)
+      async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(User).where(User.id == self.id).values(username=username)
+        )
+        await session.commit()
     return Codes.DONE
 
   async def set_password(self, password: str, save=True):
     if not f.is_valid_password(password):
       return Codes.ERR_INVALID_PASSWORD
     self.pw_hash = f.encode_password(password)
-    self.pw_update = datetime.utcnow()
+    self.pw_update = datetime.now(tz=timezone.utc)
     if save:
-      await objects.update(self)
+      async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(User).where(User.id == self.id).values(
+                pw_hash=self.pw_hash, pw_update=self.pw_update
+            )
+        )
+        await session.commit()
     return Codes.DONE
 
 
-guest_user = User(email='__guest__', pw_hash='',
-                  username='guest', group=UserGroup.Guest)
+guest_user = User(
+    email='__guest__',
+    pw_hash='',
+    username='guest',
+    group=UserGroup.Guest,
+    pw_update=datetime.fromtimestamp(0, tz=timezone.utc),
+)
+
+
+def initialize_db():
+  async def _init():
+    from utils.db import engine
+    async with engine.begin() as conn:
+      await conn.run_sync(Base.metadata.create_all)
+    async with AsyncSessionLocal() as session:
+      result = await session.execute(select(User).where(User.email == '__root__'))
+      if result.scalar_one_or_none() is None:
+        root_pw = str(uuid.uuid1())
+        session.add(User(
+            email='__root__',
+            username='root',
+            pw_hash=f.encode_password(root_pw),
+            pw_update=datetime.now(tz=timezone.utc),
+            group=UserGroup.Root,
+        ))
+        await session.commit()
+        with open('./root_pwd.txt', 'w') as fp:
+          fp.write(root_pw)
+
+  try:
+    loop = asyncio.get_running_loop()
+    loop.create_task(_init())
+  except RuntimeError:
+    asyncio.run(_init())
 
 
 async def create_user(email: str, username: str, password: str, group: str = UserGroup.User):
-
   if not f.is_valid_email(email):
     return Codes.ERR_INVALID_EMAIL
   if not f.is_valid_username(username):
@@ -87,33 +96,33 @@ async def create_user(email: str, username: str, password: str, group: str = Use
   pw_hash = f.encode_password(password)
 
   try:
-    await objects.create(
-        User,
-        email=email,
-        username=username,
-        pw_hash=pw_hash,
-        pw_update=datetime.utcnow(),
-        group=group
-    )
+    async with AsyncSessionLocal() as session:
+      session.add(User(
+          email=email,
+          username=username,
+          pw_hash=pw_hash,
+          pw_update=datetime.now(tz=timezone.utc),
+          group=group,
+      ))
+      await session.commit()
     return Codes.DONE
-  except pw.IntegrityError:
+  except IntegrityError:
     return Codes.ERR_EXISTENT_EMAIL
 
 
 async def authenticate_user(email: str, password: str) -> Tuple[int, Optional[User]]:
-  try:
-    user = await objects.get(User, User.email == email)
-    if f.verify_password(password, user.pw_hash):
-      return Codes.DONE, user
-    else:
-      return Codes.ERR_WRONG_UNAME_OR_PW, None
-  except User.DoesNotExist:
+  async with AsyncSessionLocal() as session:
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+  if user is None:
     return Codes.ERR_WRONG_UNAME_OR_PW, None
+  if f.verify_password(password, user.pw_hash):
+    return Codes.DONE, user
+  return Codes.ERR_WRONG_UNAME_OR_PW, None
 
 
 async def get_user(email: str) -> Optional[User]:
-  try:
-    user = await objects.get(User, User.email == email)
-    return user
-  except User.DoesNotExist:
-    return None
+  async with AsyncSessionLocal() as session:
+    result = await session.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
+

@@ -2,9 +2,10 @@ fastapi[all]
 uvicorn
 python-jose
 websockets
-peewee
-peewee-async
+sqlalchemy
 aiosqlite
+asyncpg
+aiomysql
 aiohttp
 python-dotenv
 pydantic

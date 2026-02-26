@@ -6,11 +6,11 @@ import {
   Stack,
   Wrap,
   Editable,
-  EditableInput,
-  EditablePreview,
-  FormLabel,
 } from '@chakra-ui/react';
-import { AddIcon, MinusIcon } from '@chakra-ui/icons';
+
+// Inline icon replacements (no @chakra-ui/icons in v3)
+const AddIcon = () => <span style={{ fontWeight: 'bold' }}>+</span>;
+const MinusIcon = () => <span style={{ fontWeight: 'bold' }}>−</span>;
 
 export type EditableKeyValuePairsProps = {
   data: Record<string, string>;
@@ -68,30 +68,32 @@ export const EditableKeyValuePairs = ({ data, setData, readOnly, width }: Editab
 
   return (
     <Box>
-      <Stack spacing={1}>
+      <Stack gap={1}>
         {Object.entries(data).map(([key, value], i) => (
-          <Wrap spacing={1} mt={i == 0 ? 0 : 1} key={key}>
+          <Wrap gap={1} mt={i === 0 ? 0 : 1} key={key}>
             {readOnly?.has(key) ?
-              <FormLabel w={width} m={1} p={1}>
+              <label style={{ width: String(width), margin: '4px', padding: '4px' }}>
                 {readOnly.get(key)}
-              </FormLabel> :
+              </label> :
 
-              <Editable
+              <Editable.Root
                 w={width}
-                value={i == tempIndex ? tempKey : key}
-                onFocus={() => {
-                  setTempKey(key);
-                  setTempIndex(i);
-                }}
-                onChange={(e) => setTempKey(e)}
-                onSubmit={(e) => {
-                  handleChangeKey(key, e);
+                value={i === tempIndex ? tempKey : key}
+                onValueChange={(e) => setTempKey(e.value)}
+                onValueCommit={(e) => {
+                  handleChangeKey(key, e.value);
                   setTempIndex(-1);
                 }}
               >
-                <EditablePreview m={1} p={1} />
-                <Input p={1} as={EditableInput} />
-              </Editable>
+                <Editable.Preview m={1} p={1} />
+                <Editable.Input
+                  p={1}
+                  onFocus={() => {
+                    setTempKey(key);
+                    setTempIndex(i);
+                  }}
+                />
+              </Editable.Root>
             }
 
             <Input
@@ -102,14 +104,15 @@ export const EditableKeyValuePairs = ({ data, setData, readOnly, width }: Editab
             />
             <IconButton
               aria-label="Remove pair"
-              icon={<MinusIcon />}
-              isDisabled={readOnly?.has(key)}
+              disabled={readOnly?.has(key)}
               onClick={() => handleRemovePair(key)}
-            />
+            >
+              <MinusIcon />
+            </IconButton>
           </Wrap>
         ))}
       </Stack>
-      <Wrap spacing={1} mt={1}>
+      <Wrap gap={1} mt={1}>
         <Input
           p={1}
           w={width}
@@ -126,9 +129,10 @@ export const EditableKeyValuePairs = ({ data, setData, readOnly, width }: Editab
         />
         <IconButton
           aria-label="Add pair"
-          icon={<AddIcon />}
           onClick={handleAddPair}
-        />
+        >
+          <AddIcon />
+        </IconButton>
       </Wrap>
     </Box>
   );

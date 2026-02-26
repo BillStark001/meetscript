@@ -1,8 +1,12 @@
 /* eslint-disable comma-spacing */
-import { RepeatIcon, TriangleDownIcon, TriangleUpIcon } from '@chakra-ui/icons';
-import { Table, TableContainer, Tbody, Td, Th, Thead, Tr } from '@chakra-ui/react';
+import { Table } from '@chakra-ui/react';
 import { Atom, useAtom } from 'jotai';
 import React, { PropsWithChildren, createContext, useContext, useMemo, useState } from 'react';
+
+// Inline icon replacements (no @chakra-ui/icons in v3)
+const RepeatIcon = () => <span>⇅</span>;
+const TriangleUpIcon = () => <span>▲</span>;
+const TriangleDownIcon = () => <span>▼</span>;
 
 
 export type SortOrder = 'none' | 'ascending' | 'descending';
@@ -125,11 +129,11 @@ export const DataTable = <T,>(props: DataTableProps<T>) => {
     return <div>{noData ?? DEFAULT_NO_DATA}</div>;
 
   return <>
-    <TableContainer>
-      <Table variant='striped' colorScheme='teal'>
+    <Table.ScrollArea>
+      <Table.Root variant='outline' colorPalette='teal'>
 
-        <Thead>
-          <Tr>
+        <Table.Header>
+          <Table.Row>
             <SortContext.Provider value={{
               sort: sorter as SortFunction<unknown>,
               sortIndex,
@@ -145,31 +149,31 @@ export const DataTable = <T,>(props: DataTableProps<T>) => {
                   children,
                   (x, i) =>
                     <IndexContext.Provider key={i} value={i}>
-                      <Th>{x}</Th>
+                      <Table.ColumnHeader>{x}</Table.ColumnHeader>
                     </IndexContext.Provider>
                 )}
               </RenderStageContext.Provider>
             </SortContext.Provider>
-          </Tr>
-        </Thead>
+          </Table.Row>
+        </Table.Header>
 
-        <Tbody>
+        <Table.Body>
           {itemList.map(([realIndex, item]) =>
             <DataRowContext.Provider value={[realIndex, item]} key={realIndex}>
-              <Tr
-                cursor={props.onSelected ? 'pointer' : 'cursor'}
+              <Table.Row
+                cursor={props.onSelected ? 'pointer' : 'default'}
                 onClick={() => onSelected?.(item, realIndex)}
                 _hover={tableShadow ? { boxShadow: '0px 0px 12px rgba(0, 0, 0, 0.3)' } : {}}>
                 {React.Children.map(
                   children,
-                  (x, i) => <Td key={i}>{x}</Td>
+                  (x, i) => <Table.Cell key={i}>{x}</Table.Cell>
                 )}
-              </Tr>
+              </Table.Row>
             </DataRowContext.Provider>
           )}
-        </Tbody>
-      </Table>
-    </TableContainer>
+        </Table.Body>
+      </Table.Root>
+    </Table.ScrollArea>
   </>;
 };
 
